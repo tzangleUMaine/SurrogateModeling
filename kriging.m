@@ -32,8 +32,9 @@ end
 fun = @(theta_solved)(-CalculateMLE(pre_psi_ij,theta_solved,Y,n_samp));
 theta = fminsearch(fun,1.0);
 
+disp(theta);
+
 sz= size(mle);
-disp(mle);
 figure(3)
 scatter(theta_vec,mle);
 xlabel('theta');
@@ -57,7 +58,7 @@ figure(4)
 plot(X_gt,Y_gt,'r-','LineWidth',2);
 hold on
 scatter(X,Y)
-scatter(X_gt,y_pred);
+plot(X_gt,y_pred,'b-','LineWidth',2,'DisplayName','Model');
 xlabel('X');
 ylabel('Y_hat');
 title('Prediction');
@@ -65,7 +66,8 @@ title('Prediction');
 % Calculate sample points from the specified test function
 % This function example is from Forrester 2008
 function y_samp = TestFunction( x_samp)
-    y_samp = (6.*x_samp-2).^2.*sin(12.*x_samp-4);
+    %y_samp = (6.*x_samp-2).^2.*sin(12.*x_samp-4);
+    y_samp = 10*(x_samp-0.5)+5;
 end
 
 %Calculate the constant b for Kriging
@@ -103,8 +105,7 @@ function [psi_ij,inv_psi_ij] = CalculatePsiMatrix( pre_psi_ij, theta)
 end
 
 % Maximum Likelihood estimation
-function mle = CalculateMLE( pre_psi_ij,theta,y,n_samp)    
-    disp(y);
+function mle = CalculateMLE( pre_psi_ij,theta,y,n_samp)   
     [psi_ij,inv_psi_ij] = CalculatePsiMatrix(pre_psi_ij,theta);
     mu_hat = CalculateKrigingMean(inv_psi_ij,y,n_samp);
     sigma = CalculateSigma(inv_psi_ij,mu_hat,y,n_samp);
