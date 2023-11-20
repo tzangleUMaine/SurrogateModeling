@@ -19,7 +19,7 @@ nc = size(Xc,1);
 
 % Debugging Step
 % Plot the expensive and cheap functions
-PlotMultiFidelityFunctions(n_test);
+[X_real,Yc_real,Ye_real]=PlotMultiFidelityFunctions(n_test);
 
 %% Solve for the kriging model of the "Cheap" data
 % Calculate the distance matrix
@@ -38,7 +38,26 @@ b_c = CalculateConstantB(inv_psic_c, Yc, mu_hat_c, nc);
 
 % Debugging step
 % Plot the kriging model of the cheap function
-PlotKrigingModel('Cheap Kriging Model', 0.0, 1.0, 300, Xc, Yc, theta_c, b_c, mu_hat_c, nc);
+[X_kc, Y_kc] = PlotKrigingModel('Cheap Kriging Model', 0.0, 1.0, 300, Xc, Yc, theta_c, b_c, mu_hat_c, nc);
+
+%% Solve for the kriging model of the "Expensive" data
+% Calculate the distance matrix
+pre_psi_ij_e = CalculatePrePsiMatrix( Xe, ne);
+
+PlotMLE(pre_psi_ij_e,Ye,ne);
+
+fun2 = @(theta_solved)(-CalculateMLE(pre_psi_ij_e,theta_solved,Ye,ne));
+theta_e = fminsearch(fun2,1.0);
+
+% Calculate sigma^2, mu, and b constants
+[~,inv_psic_e] = CalculatePsiMatrix(pre_psi_ij_e,theta_e);
+mu_hat_e = CalculateKrigingMean( inv_psic_e, Ye, ne);
+sigma_e = CalculateSigma(inv_psic_e,mu_hat_e,Ye,ne);
+b_e = CalculateConstantB(inv_psic_e, Ye, mu_hat_e, ne);
+
+% Debugging step
+% Plot the kriging model of the cheap function
+[X_ke, Y_ke] = PlotKrigingModel('Expensive Kriging Model', 0.0, 1.0, 300, Xe, Ye, theta_e, b_e, mu_hat_e, ne);
 
 %% Solve for the kriging model of the difference between the
 %%  Expensive and Cheap data sets
@@ -94,16 +113,15 @@ pre_psi_e = CalculatePrePsiMatrix(Xe,ne);
 % Assemble the C matrix from the above parts
 [C_mat, inv_C] = CalculateCovariance(ne, nc, sigma_c, psic_c, rho, psic_ce, psic_ec, psic_e, sigma_d, psid_e);
 
-writematrix(inv_C,'inv_cmat.txt');
-
 % Assemble the combined y vector of cheap and expensive values
 Yck = [Yc;Ye];
 
 % Find the cokriging mean value
 mu_hat_ck = CalculateKrigingMean(inv_C, Yck, nc+ne);
 
-%% Plot Cokriging prediction for function
-PlotCoKrigingModel('CoKriging Model', 0.0, 1.0, n_test, Xc, Xe, Yck, inv_C, theta_c, theta_d, sigma_c, sigma_d, rho, mu_hat_ck, nc, ne);
+%% Plot Comparison
+[X_outck,Y_outck] = PlotCoKrigingModel('CoKriging Model', 0.0, 1.0, n_test, Xc, Xe, Yck, inv_C, theta_c, theta_d, sigma_c, sigma_d, rho, mu_hat_ck, nc, ne);
+plotItAll(Xc, Yc, Xe, Ye, X_real, Yc_real, Ye_real, X_ke, Y_ke, X_kc, Y_kc, X_outck, Y_outck);
 
 %% Functions %%%%%%%%%%%%%%%%%%%%
 % Calculate sample points from the specified "Expensive" test function
@@ -253,13 +271,12 @@ function y_pred = CoKrigingPrediction(x_new, Xc, Xe, Yck, inv_C, theta_c, theta_
     end
     c_vec = zeros(nc+ne,1);
     c_vec(1:nc,1) = rho*sigma_c*psic_c_new;
-    c_vec(nc+1:ne+nc,1) = rho^2*sigma_c*psic_e_new + sigma_d*psid_e_new;
-    writematrix(c_vec,'c_vector.txt');
+    c_vec(nc+1:ne+nc,1) = rho^2*sigma_c*psic_e_new + sigma_d*psid_e_new;    
     y_pred = mu_hat_ck + transpose(c_vec)*inv_C*(Yck-ones(nc+ne,1)*mu_hat_ck);
 end
 
 % Plot Co-kriging model
-function PlotCoKrigingModel(name, xmin, xmax, neval, Xc, Xe, Yck, inv_C, theta_c, theta_d, sigma_c, sigma_d, rho, mu_hat_ck, nc, ne)
+function [X_krig, Y_krig] = PlotCoKrigingModel(name, xmin, xmax, neval, Xc, Xe, Yck, inv_C, theta_c, theta_d, sigma_c, sigma_d, rho, mu_hat_ck, nc, ne)
     X_eval = linspace(xmin,xmax,neval);
     Y_hat = zeros(neval,1);
     for ind = 1:neval
@@ -278,10 +295,12 @@ function PlotCoKrigingModel(name, xmin, xmax, neval, Xc, Xe, Yck, inv_C, theta_c
     xlabel('X');
     ylabel('Y');
     title('CoKriging Prediction');
+    X_krig = X_eval;
+    Y_krig = Y_hat;
 end
 
 % Plot Kriging Model
-function PlotKrigingModel(name, xmin, xmax, neval, X, Y, theta, b, mu_hat, n_samp)
+function [X_krig, Y_krig] = PlotKrigingModel(name, xmin, xmax, neval, X, Y, theta, b, mu_hat, n_samp)
     X_eval = linspace(xmin,xmax,neval);
     Y_hat = zeros(neval,1);
     for ind = 1:neval
@@ -294,6 +313,8 @@ function PlotKrigingModel(name, xmin, xmax, neval, X, Y, theta, b, mu_hat, n_sam
     xlabel('X');
     ylabel('Y');
     title('Kriging Prediction');
+    X_krig = X_eval;
+    Y_krig = Y_hat;
 end
 
 % Evaluate Kriging influence of each point (Debugging fxn only)
@@ -318,7 +339,7 @@ function [dist,var] = GenerateSemiVariogram( X, Y, n_samp)
     end
 end
 
-function PlotMultiFidelityFunctions(n_test)
+function [X_real, Yc_real, Ye_real] = PlotMultiFidelityFunctions(n_test)
     X_real = linspace(0,1,n_test);
     Yc_real = CheapTestFunction(X_real);
     Ye_real = ExpensiveTestFunction(X_real);
@@ -330,4 +351,30 @@ function PlotMultiFidelityFunctions(n_test)
     xlabel('X');
     ylabel('Y');
     title('Multi-Fidelity Functions');
+end
+
+function plotItAll(Xc, Yc, Xe, Ye, X_real, Yc_real, Ye_real, X_ke, Y_ke, X_kc, Y_kc, X_ck, Y_ck)
+    figure('Name','MFS With Cokriging Method');
+    title('MFS With Cokriging Method')
+    xlabel('X');
+    ylabel('Y');
+
+    % Plot Expensive Fxn, Data Points, and Kriging model
+    plot(X_real,Ye_real,'b-','LineWidth',2,'DisplayName','Expensive');
+    hold on
+    plot(X_ke,Y_ke,'b--','LineWidth',2,'DisplayName','Expensive Kriging');
+    hold on
+    plot(Xe,Ye,'o','Color','b','DisplayName','Expensive Data');
+    hold on
+
+    % Plot Cheap Fxn, Data Points, and Kriging model
+    plot(X_real,Yc_real,'r-','LineWidth',1,'DisplayName','Cheap');
+    hold on
+    plot(X_kc,Y_kc,'r:','LineWidth',1,'DisplayName','Cheap Kriging');
+    hold on
+    plot(Xc,Yc,'diamond','Color','r','DisplayName','Cheap Data');
+    hold on
+
+    % Plot the Cokriging data fit
+    plot(X_ck,Y_ck,'k-.','LineWidth',1,'DisplayName','Cokriging');
 end
