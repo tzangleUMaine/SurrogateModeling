@@ -8,122 +8,131 @@ n_test = 200;
 
 %% Set up the inputs over here
 % Ground truth "Expensive" function from Forrester Kriging Paper
-Xe = [0.0;0.4;0.6;1.0];
+Xe = [0.0;0.4;0.59;1.0];
 Ye = ExpensiveTestFunction(Xe);
-ne = size(Xe,1);
 
 % Ground truth "Cheap" function from Forrester Kriging Paper
 Xc = [0.0;0.1;0.2;0.3;0.4;0.5;0.6;0.7;0.8;0.9;1.0];
 Yc = CheapTestFunction(Xc);
-nc = size(Xc,1);
 
 % Debugging Step
 % Plot the expensive and cheap functions
 [X_real,Yc_real,Ye_real]=PlotMultiFidelityFunctions(n_test);
 
-%% Solve for the kriging model of the "Cheap" data
-% Calculate the distance matrix
-pre_psi_ij_c = CalculatePrePsiMatrix( Xc, nc);
+%% Solve for the Co-kriging model
+[inv_C,theta_c,theta_d,sigma_c,sigma_d,rho,mu_hat_ck,nc,ne]=CokrigingSetup(Xc,Xe,Yc,Ye,true);
 
-PlotMLE(pre_psi_ij_c,Yc,nc);
 
-fun1 = @(theta_solved)(-CalculateMLE(pre_psi_ij_c,theta_solved,Yc,nc));
-theta_c = fminsearch(fun1,1.0);
-
-% Calculate sigma^2, mu, and b constants
-[psic_c,inv_psic_c] = CalculatePsiMatrix(pre_psi_ij_c,theta_c);
-mu_hat_c = CalculateKrigingMean( inv_psic_c, Yc, nc);
-sigma_c = CalculateSigma(inv_psic_c,mu_hat_c,Yc,nc);
-b_c = CalculateConstantB(inv_psic_c, Yc, mu_hat_c, nc);
-
-% Debugging step
-% Plot the kriging model of the cheap function
-[X_kc, Y_kc] = PlotKrigingModel('Cheap Kriging Model', 0.0, 1.0, 300, Xc, Yc, theta_c, b_c, mu_hat_c, nc);
-
-%% Solve for the kriging model of the "Expensive" data
-% Calculate the distance matrix
-pre_psi_ij_e = CalculatePrePsiMatrix( Xe, ne);
-
-PlotMLE(pre_psi_ij_e,Ye,ne);
-
-fun2 = @(theta_solved)(-CalculateMLE(pre_psi_ij_e,theta_solved,Ye,ne));
-theta_e = fminsearch(fun2,1.0);
-
-% Calculate sigma^2, mu, and b constants
-[~,inv_psic_e] = CalculatePsiMatrix(pre_psi_ij_e,theta_e);
-mu_hat_e = CalculateKrigingMean( inv_psic_e, Ye, ne);
-sigma_e = CalculateSigma(inv_psic_e,mu_hat_e,Ye,ne);
-b_e = CalculateConstantB(inv_psic_e, Ye, mu_hat_e, ne);
-
-% Debugging step
-% Plot the kriging model of the cheap function
-[X_ke, Y_ke] = PlotKrigingModel('Expensive Kriging Model', 0.0, 1.0, 300, Xe, Ye, theta_e, b_e, mu_hat_e, ne);
-
-%% Solve for the kriging model of the difference between the
-%%  Expensive and Cheap data sets
-% Start by finding the value of yc_hat at all values of Xe
-yc_hat_xe = zeros(ne,1);
-for ind = 1:ne
-    yc_hat_xe(ind,1) = KrigingPrediction(Xe(ind), Xc, theta_c, b_c, mu_hat_c, nc);
-end
-
-% Calculate the distance matrix
-pre_psi_ij_d = CalculatePrePsiMatrix( Xe, ne);
-
-d = Ye-yc_hat_xe;
-
-% Plot the difference values
-figure('Name','Difference Values')
-scatter(Xe,d);
-xlabel('X');
-ylabel('Y');
-title('Difference Between Expensive and Cheap');
-
-PlotMLEDiff(pre_psi_ij_d,Ye,yc_hat_xe,ne);
-% 
-% fun = @(solved)(-CalculateMLEDiff(pre_psi_ij_d,solved(1),Ye,yc_hat_xe,solved(2),ne));
-% solved = [1.0 0.4];
-% output = fminsearch(fun,solved);
-% theta_d = output(1);
-% rho = output(2);
-rho = 1.87;
-fun = @(solved)(-CalculateMLEDiff(pre_psi_ij_d,solved(1),Ye,yc_hat_xe,rho,ne));
-theta_d = fminsearch(fun,1.0);
-
-% Calculate sigma, mu, and b constants
-[psi_ij_d,inv_psi_ij_d] = CalculatePsiMatrix(pre_psi_ij_d,theta_d);
-d = Ye-rho*yc_hat_xe;
-mu_hat_d = CalculateKrigingMean( inv_psi_ij_d, d, ne);
-sigma_d = CalculateSigma(inv_psi_ij_d,mu_hat_d,d,ne);
-b_d = CalculateConstantB(inv_psi_ij_d, d, mu_hat_d, ne);
-
-% Debugging Step
-% Plot the kriging model of the difference
-PlotKrigingModel('Diff Kriging Model', 0.0, 1.0, 300, Xe, d, theta_d, b_d, mu_hat_d, ne)
-
-%% Assemble the Coefficients for Cokriging Evaluation
-% Calculate the psi_c(Xc,Xe) and psi_c(Xe,Xc) terms first
-[psic_ec,psic_ce] = CalculatePsiMatrix_MF(theta_c,Xe,Xc,ne,nc);
-
-% Calculate psic(Xe,Xe) & psid(Xe,Xe)
-pre_psi_e = CalculatePrePsiMatrix(Xe,ne);
-[psic_e, inv_psic_e] = CalculatePsiMatrix(pre_psi_e, theta_c);
-[psid_e,inv_psid_e] = CalculatePsiMatrix(pre_psi_e,theta_d);
-
-% Assemble the C matrix from the above parts
-[C_mat, inv_C] = CalculateCovariance(ne, nc, sigma_c, psic_c, rho, psic_ce, psic_ec, psic_e, sigma_d, psid_e);
-
-% Assemble the combined y vector of cheap and expensive values
-Yck = [Yc;Ye];
-
-% Find the cokriging mean value
-mu_hat_ck = CalculateKrigingMean(inv_C, Yck, nc+ne);
-
-%% Plot Comparison
-[X_outck,Y_outck] = PlotCoKrigingModel('CoKriging Model', 0.0, 1.0, n_test, Xc, Xe, Yck, inv_C, theta_c, theta_d, sigma_c, sigma_d, rho, mu_hat_ck, nc, ne);
-plotItAll(Xc, Yc, Xe, Ye, X_real, Yc_real, Ye_real, X_ke, Y_ke, X_kc, Y_kc, X_outck, Y_outck);
 
 %% Functions %%%%%%%%%%%%%%%%%%%%
+
+% Co-Kriging Setup Function
+function [inv_C,theta_c,theta_d,sigma_c,sigma_d,rho,mu_hat_ck,nc,ne]=CokrigingSetup(Xc,Xe,Yc,Ye,Verbose)
+
+    %% Solve for the kriging model of the "Cheap" data    
+    [theta_c, b_c, mu_hat_c, nc, sigma_c, psic_c, ~, ~] = KrigingSetup(Xc,Yc);
+    
+    % Debugging step
+    % Plot the kriging model of the cheap function
+    if Verbose
+        PlotKrigingModel('Cheap Kriging Model', 0.0, 1.0, 300, Xc, Yc, theta_c, b_c, mu_hat_c, nc);
+    end
+    
+    %% ONLY FOR DEBUG solve for the kriging model of the "Expensive" data
+    if Verbose        
+        [theta_e, b_e, mu_hat_e, ne, ~, ~, ~, ~] = KrigingSetup(Xe,Ye);
+        % Plot the kriging model of the cheap function
+    
+        PlotKrigingModel('Expensive Kriging Model', 0.0, 1.0, 300, Xe, Ye, theta_e, b_e, mu_hat_e, ne);
+    end
+
+    %% Solve for the kriging model of the difference 
+    %%      between the Expensive and Cheap data sets
+    
+    % Start by finding the value of yc_hat at all values of Xe
+    yc_hat_xe = zeros(ne,1);
+    for ind = 1:ne
+        yc_hat_xe(ind,1) = KrigingPrediction(Xe(ind), Xc, theta_c, b_c, mu_hat_c, nc);
+    end
+    
+    [theta_d,b_d,mu_hat_d,rho,d,ne,sigma_d,psid_e,~,~] = DiffKrigingSetup(Xe,yc_hat_xe,Ye);
+    
+    % Debugging Step
+    if Verbose
+        % Plot the kriging model of the difference
+        PlotKrigingModel('Diff Kriging Model', 0.0, 1.0, 300, Xe, d, theta_d, b_d, mu_hat_d, ne)
+    end
+
+    %% Assemble the Coefficients for Cokriging Evaluation
+    % Calculate the psi_c(Xc,Xe) and psi_c(Xe,Xc) terms first
+    [psic_ec,psic_ce] = CalculatePsiMatrix_MF(theta_c,Xe,Xc,ne,nc);
+    
+    % Calculate psic(Xe,Xe)
+    pre_psi_e = CalculatePrePsiMatrix(Xe,ne);
+    [psic_e, ~] = CalculatePsiMatrix(pre_psi_e, theta_c);
+    
+    % Assemble the C matrix from the above parts
+    [~, inv_C] = CalculateCovariance(ne, nc, sigma_c, psic_c, rho, psic_ce, psic_ec, psic_e, sigma_d, psid_e);
+    
+    % Assemble the combined y vector of cheap and expensive values
+    Yck = [Yc;Ye];
+    
+    %% Solve for the Co-kriging mean value
+    % Find the cokriging mean value
+    mu_hat_ck = CalculateKrigingMean(inv_C, Yck, nc+ne);    
+
+    % Plot Comparison for debugging
+    if Verbose
+        PlotCoKrigingModel('CoKriging Model', 0.0, 1.0, 300, Xc, Xe, Yck, inv_C, theta_c, theta_d, sigma_c, sigma_d, rho, mu_hat_ck, nc, ne);
+        %plotItAll(Xc, Yc, Xe, Ye, X_real, Yc_real, Ye_real, X_ke, Y_ke, X_kc, Y_kc, X_outck, Y_outck);
+    end
+end
+
+% Kriging Setup Function
+function [theta,b,mu_hat,n,sigma,psi,inv_psi,pre_psi] = KrigingSetup(X,Y)
+    n = size(X,1);
+    pre_psi = CalculatePrePsiMatrix( X, n);
+    
+%     PlotMLE(pre_psi,Y,n);
+    
+    fun = @(theta_solved)(-CalculateMLE(pre_psi,theta_solved,Y,n));
+    theta = fminsearch(fun,1.0);
+    
+    % Calculate sigma^2, mu, and b constants
+    [psi,inv_psi] = CalculatePsiMatrix(pre_psi,theta);
+    mu_hat = CalculateKrigingMean( inv_psi, Y, n);
+    sigma = CalculateSigma(inv_psi,mu_hat,Y,n);
+    b = CalculateConstantB(inv_psi, Y, mu_hat, n);
+end
+
+% Difference Kriging Setup
+% This includes a scaling factor output that is solved for
+%   in the theta solver block
+function [theta,b,mu_hat,rho,d,n,sigma,psi,inv_psi,pre_psi] = DiffKrigingSetup(X,Yce,Ye)
+    n = size(X,1);
+
+    % Calculate the distance matrix
+    pre_psi = CalculatePrePsiMatrix(X, n);   
+    
+    fun = @(solved)(-CalculateMLEDiff(pre_psi,solved(1),Ye,Yce,solved(2),n));
+    solved = [0.2, 1.9];
+    options = optimset('MaxFunEvals',100000);
+    output = fminsearch(fun,solved,options);
+    theta = output(1);
+    rho = output(2);
+
+%     rho = 1.87;
+%     fun = @(solved)(-CalculateMLEDiff(pre_psi,solved,Ye,Yce,rho,n));
+%     theta = fminsearch(fun,1.0);
+    
+    % Calculate sigma, mu, and b constants
+    [psi,inv_psi] = CalculatePsiMatrix(pre_psi,theta);
+    d = Ye-rho*Yce;
+    mu_hat = CalculateKrigingMean( inv_psi, d, n);
+    sigma = CalculateSigma(inv_psi,mu_hat,d,n);
+    b = CalculateConstantB(inv_psi, d, mu_hat, n);
+end
+
 % Calculate sample points from the specified "Expensive" test function
 % This function example is from Forrester 2008
 function y_samp = ExpensiveTestFunction(x_samp)
