@@ -8,19 +8,20 @@ n_test = 200;
 
 %% Set up the inputs over here
 % Ground truth "Expensive" function from Forrester Kriging Paper
-Xe = [0.0;0.4;0.59;1.0];
+Xe = [0.0;0.4;0.;1.0];
 Ye = ExpensiveTestFunction(Xe);
 
 % Ground truth "Cheap" function from Forrester Kriging Paper
 Xc = [0.0;0.1;0.2;0.3;0.4;0.5;0.6;0.7;0.8;0.9;1.0];
-Yc = CheapTestFunction(Xc);
+%Yc = CheapTestFunction(Xc);
+Yc = LinearCheapFunction(Xc);
 
 % Debugging Step
 % Plot the expensive and cheap functions
 [X_real,Yc_real,Ye_real]=PlotMultiFidelityFunctions(n_test);
 
 %% Solve for the Co-kriging model
-[inv_C,theta_c,theta_d,sigma_c,sigma_d,rho,mu_hat_ck,nc,ne]=CokrigingSetup(Xc,Xe,Yc,Ye,true);
+[inv_C,theta_c,theta_d,sigma_c,sigma_d,rho,mu_hat_ck,nc,ne]=CokrigingSetup(Xc,Xe,Yc,Ye,false);
 
 
 
@@ -50,6 +51,7 @@ function [inv_C,theta_c,theta_d,sigma_c,sigma_d,rho,mu_hat_ck,nc,ne]=CokrigingSe
     %%      between the Expensive and Cheap data sets
     
     % Start by finding the value of yc_hat at all values of Xe
+    ne = size(Xe,1);
     yc_hat_xe = zeros(ne,1);
     for ind = 1:ne
         yc_hat_xe(ind,1) = KrigingPrediction(Xe(ind), Xc, theta_c, b_c, mu_hat_c, nc);
@@ -82,7 +84,7 @@ function [inv_C,theta_c,theta_d,sigma_c,sigma_d,rho,mu_hat_ck,nc,ne]=CokrigingSe
     mu_hat_ck = CalculateKrigingMean(inv_C, Yck, nc+ne);    
 
     % Plot Comparison for debugging
-    if Verbose
+    if true
         PlotCoKrigingModel('CoKriging Model', 0.0, 1.0, 300, Xc, Xe, Yck, inv_C, theta_c, theta_d, sigma_c, sigma_d, rho, mu_hat_ck, nc, ne);
         %plotItAll(Xc, Yc, Xe, Ye, X_real, Yc_real, Ye_real, X_ke, Y_ke, X_kc, Y_kc, X_outck, Y_outck);
     end
@@ -143,6 +145,14 @@ end
 % This function example is from Forrester 2008
 function y_samp = CheapTestFunction(x_samp)
     y_samp = 0.5*ExpensiveTestFunction(x_samp)+10*(x_samp-0.5)-5;
+end
+
+function y_samp = LinearCheapFunction(x_samp)
+    x_lo = 0;
+    x_hi = 1;
+    y_lo = ExpensiveTestFunction(0);
+    y_hi = ExpensiveTestFunction(1);
+    y_samp = (y_hi-y_lo)/(x_hi-x_lo)*(x_samp-x_lo)-y_lo;
 end
 
 %Calculate the constant b for Kriging
