@@ -4,31 +4,167 @@
 
 
 %% Set up some sampling constants for graph purposes
-n_test = 200;
+n_test = 300;
 
-%% Set up the inputs over here
-% Ground truth "Expensive" function from Forrester Kriging Paper
-Xe = [0.0;0.4;0.;1.0];
-Ye = ExpensiveTestFunction(Xe);
+%% Model Inputs
+% Expensive model samples
+n_e = 4;
+% Cheap model samples
+n_c = 11;
+% Function set choice, corresponds to a predefined set of LF/HF fxns
+fxn_ind = 1;
 
-% Ground truth "Cheap" function from Forrester Kriging Paper
-Xc = [0.0;0.1;0.2;0.3;0.4;0.5;0.6;0.7;0.8;0.9;1.0];
-%Yc = CheapTestFunction(Xc);
-Yc = LinearCheapFunction(Xc);
+%% Generate inputs
+%Get bounds
+[xmin,xmax,dim] = FunctionBounds(fxn_ind);
+
+% Sample the expensive and cheap functions
+Xe = EqualSpacedSamples(n_e,xmin,xmax,dim);
+Ye = ExpensiveTestFunction(fxn_ind,Xe);
+
+Xc = EqualSpacedSamples(n_c,xmin,xmax,dim);
+Yc = CheapTestFunction(fxn_ind,Xc);
+
+
 
 % Debugging Step
 % Plot the expensive and cheap functions
-[X_real,Yc_real,Ye_real]=PlotMultiFidelityFunctions(n_test);
+%[X_real,Yc_real,Ye_real]=PlotMultiFidelityFunctions(fxn_ind,n_test);
 
 %% Solve for the Co-kriging model
-[inv_C,theta_c,theta_d,sigma_c,sigma_d,rho,mu_hat_ck,nc,ne]=CokrigingSetup(Xc,Xe,Yc,Ye,false);
+%[inv_C,theta_c,theta_d,sigma_c,sigma_d,rho,mu_hat_ck,nc,ne]=CokrigingSetup(Xc,Xe,Yc,Ye,xmin,xmax,false,true,fxn_ind);
 
+%% Organized output methods
+%TwoDimCoKriging();
 
+%TestDeltaNc(1)
+
+%ForresterPaperResults();
+
+%% Output Functions %%%%%%%%%%%%%
+% Functions geared towards generating the plots for the report
+function ForresterPaperResults()
+    n_test = 300;
+    fxn_ind = 1;
+    [xmin,xmax,~] = FunctionBounds(fxn_ind);
+    
+    PlotMultiFidelityFunctions(fxn_ind,n_test);
+
+    Xe = [0.0;0.4;0.6;1.0];
+    Ye = ExpensiveTestFunction(fxn_ind,Xe);
+
+    Xc = [0.0,0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9,1.0];
+    Xc = transpose(Xc);
+    Yc = CheapTestFunction(1,Xc);    
+
+    rho_fixed = true;
+    verbose = true;
+    CokrigingSetup(Xc,Xe,Yc,Ye,xmin,xmax,rho_fixed,verbose,fxn_ind);
+end
+
+function TestDeltaNc(fxn_ind)
+
+    n_test = 300;
+    %% Model Inputs
+    % Expensive model samples
+    n_e = 4;
+
+    %Get bounds
+    [xmin,xmax,dim] = FunctionBounds(fxn_ind);
+
+    % Generate evaluation locations
+    X_eval = linspace(xmin,xmax,n_test);
+    Yhat = zeros(n_test,10);
+    error = zeros(10,1);
+
+    % Generate Expensive Dataset for plotting comparison
+    Y_reale = ExpensiveTestFunction(fxn_ind,X_eval);
+
+    % Cheap model samples
+    ind=1;
+    for n_c = 6:15        
+        % Sample the expensive and cheap functions
+        Xe = EqualSpacedSamples(n_e,xmin,xmax,dim);
+        Ye = ExpensiveTestFunction(fxn_ind,Xe);
+        
+        Xc = EqualSpacedSamples(n_c,xmin,xmax,dim);
+        Yc = CheapTestFunction(fxn_ind,Xc);
+        
+        % Generate the cokriging model
+        [inv_C,theta_c,theta_d,sigma_c,sigma_d,rho,mu_hat_ck,nc,ne]=CokrigingSetup(Xc,Xe,Yc,Ye,xmin,xmax,false,false,fxn_ind);
+        Yck = [Yc;Ye];
+        error(ind) = CalculateModelError( Xc, Xe, Yck, inv_C, theta_c, theta_d, sigma_c, sigma_d, rho, mu_hat_ck, nc, ne, fxn_ind,n_test);
+        for i = 1:n_test
+            Yhat(i,ind) = CoKrigingPrediction(X_eval(i), Xc, Xe, Yck, inv_C, theta_c, theta_d, sigma_c, sigma_d, rho, mu_hat_ck, nc, ne);
+        end
+        ind = ind+1;
+    end    
+    % Plot all of the co-kriging models
+    figure('Name','Co-kriging with changing cheap evaluations');
+    plot(X_eval,Y_reale,'b-','LineWidth',2,'DisplayName','Expensive')
+    hold on
+    plot(X_eval,Yhat(:,7),'r--','LineWidth',2,'DisplayName','nc = 12');
+    hold on
+    plot(X_eval,Yhat(:,8),'g:','LineWidth',2,'DisplayName','nc = 13');
+    hold on
+    plot(X_eval,Yhat(:,10),'k:','LineWidth',2,'DisplayName','nc = 15');
+    hold on
+    xlabel('X')
+    ylabel('Y')
+
+    % Plot the error
+    n = linspace(6,15,10);
+    figure('Name','Co-kriging RMS Error');
+    plot(n,error,'b-','LineWidth',2);
+    hold on
+    xlabel('nc')
+    ylabel('RMS Error')
+end
+
+function TwoDimCoKriging()
+    %% Set up some sampling constants for graph purposes
+    n_test = 300;
+
+    %% Model Inputs
+    % Expensive model samples
+    n_e = 4;
+    % Cheap model samples
+    n_c = 11;
+    % Function set choice, corresponds to a predefined set of LF/HF fxns
+    fxn_ind = 5;
+    
+    %% Generate inputs
+    %Get bounds
+    [xmin,xmax,dim] = FunctionBounds(fxn_ind);
+    
+    % Sample the expensive and cheap functions
+    Xe = EqualSpacedSamples(n_e,xmin,xmax,dim);
+    Ye = ExpensiveTestFunction(fxn_ind,Xe);
+    
+    Xc = EqualSpacedSamples(n_c,xmin,xmax,dim);
+    Yc = CheapTestFunction(fxn_ind,Xc);
+
+    PlotMultiFidelityFunctions(fxn_ind,n_test);
+
+    %% Solve for the Co-kriging model
+    CokrigingSetup(Xc,Xe,Yc,Ye,xmin,xmax,false,true,fxn_ind);
+end
 
 %% Functions %%%%%%%%%%%%%%%%%%%%
 
+% Space Samples
+function Xsamp = EqualSpacedSamples(n,xmin,xmax,dim)
+    grd = cell(1,dim);
+    Xsamp = zeros(n^dim,dim);
+    for i = 1:dim
+        step = (xmax(i)-xmin(i))/(n-1);
+        [grd{:}] = ndgrid(xmin(i):step:xmax(i));
+        Xsamp(:,i) = grd{i}(:).';
+    end
+end
+
 % Co-Kriging Setup Function
-function [inv_C,theta_c,theta_d,sigma_c,sigma_d,rho,mu_hat_ck,nc,ne]=CokrigingSetup(Xc,Xe,Yc,Ye,Verbose)
+function [inv_C,theta_c,theta_d,sigma_c,sigma_d,rho,mu_hat_ck,nc,ne]=CokrigingSetup(Xc,Xe,Yc,Ye,xmin,xmax,rho_fixed,Verbose,fxn_ind)
 
     %% Solve for the kriging model of the "Cheap" data    
     [theta_c, b_c, mu_hat_c, nc, sigma_c, psic_c, ~, ~] = KrigingSetup(Xc,Yc);
@@ -36,15 +172,14 @@ function [inv_C,theta_c,theta_d,sigma_c,sigma_d,rho,mu_hat_ck,nc,ne]=CokrigingSe
     % Debugging step
     % Plot the kriging model of the cheap function
     if Verbose
-        PlotKrigingModel('Cheap Kriging Model', 0.0, 1.0, 300, Xc, Yc, theta_c, b_c, mu_hat_c, nc);
+        PlotKrigingModel('Cheap Kriging Model', xmin, xmax, 300, Xc, Yc, theta_c, b_c, mu_hat_c, nc);
     end
     
     %% ONLY FOR DEBUG solve for the kriging model of the "Expensive" data
     if Verbose        
         [theta_e, b_e, mu_hat_e, ne, ~, ~, ~, ~] = KrigingSetup(Xe,Ye);
-        % Plot the kriging model of the cheap function
-    
-        PlotKrigingModel('Expensive Kriging Model', 0.0, 1.0, 300, Xe, Ye, theta_e, b_e, mu_hat_e, ne);
+        % Plot the kriging model of the cheap function    
+        PlotKrigingModel('Expensive Kriging Model', xmin, xmax, 300, Xe, Ye, theta_e, b_e, mu_hat_e, ne);
     end
 
     %% Solve for the kriging model of the difference 
@@ -57,12 +192,12 @@ function [inv_C,theta_c,theta_d,sigma_c,sigma_d,rho,mu_hat_ck,nc,ne]=CokrigingSe
         yc_hat_xe(ind,1) = KrigingPrediction(Xe(ind), Xc, theta_c, b_c, mu_hat_c, nc);
     end
     
-    [theta_d,b_d,mu_hat_d,rho,d,ne,sigma_d,psid_e,~,~] = DiffKrigingSetup(Xe,yc_hat_xe,Ye);
+    [theta_d,b_d,mu_hat_d,rho,d,ne,sigma_d,psid_e,~,~] = DiffKrigingSetup(Xe,yc_hat_xe,Ye,rho_fixed);
     
     % Debugging Step
     if Verbose
         % Plot the kriging model of the difference
-        PlotKrigingModel('Diff Kriging Model', 0.0, 1.0, 300, Xe, d, theta_d, b_d, mu_hat_d, ne)
+        PlotKrigingModel('Diff Kriging Model', xmin, xmax, 300, Xe, d, theta_d, b_d, mu_hat_d, ne)
     end
 
     %% Assemble the Coefficients for Cokriging Evaluation
@@ -84,8 +219,8 @@ function [inv_C,theta_c,theta_d,sigma_c,sigma_d,rho,mu_hat_ck,nc,ne]=CokrigingSe
     mu_hat_ck = CalculateKrigingMean(inv_C, Yck, nc+ne);    
 
     % Plot Comparison for debugging
-    if true
-        PlotCoKrigingModel('CoKriging Model', 0.0, 1.0, 300, Xc, Xe, Yck, inv_C, theta_c, theta_d, sigma_c, sigma_d, rho, mu_hat_ck, nc, ne);
+    if Verbose
+        PlotCoKrigingModel('CoKriging Model', xmin, xmax, 300, Xc, Yc, Xe, Ye, Yck, inv_C, theta_c, theta_d, sigma_c, sigma_d, rho, mu_hat_ck, nc, ne, fxn_ind, rho_fixed);
         %plotItAll(Xc, Yc, Xe, Ye, X_real, Yc_real, Ye_real, X_ke, Y_ke, X_kc, Y_kc, X_outck, Y_outck);
     end
 end
@@ -98,8 +233,12 @@ function [theta,b,mu_hat,n,sigma,psi,inv_psi,pre_psi] = KrigingSetup(X,Y)
 %     PlotMLE(pre_psi,Y,n);
     
     fun = @(theta_solved)(-CalculateMLE(pre_psi,theta_solved,Y,n));
-    theta = fminsearch(fun,1.0);
+    theta = fminsearch(fun,2.0);
     
+    if theta < 1e-3
+        theta = 1e-3;
+    end
+
     % Calculate sigma^2, mu, and b constants
     [psi,inv_psi] = CalculatePsiMatrix(pre_psi,theta);
     mu_hat = CalculateKrigingMean( inv_psi, Y, n);
@@ -110,23 +249,29 @@ end
 % Difference Kriging Setup
 % This includes a scaling factor output that is solved for
 %   in the theta solver block
-function [theta,b,mu_hat,rho,d,n,sigma,psi,inv_psi,pre_psi] = DiffKrigingSetup(X,Yce,Ye)
+function [theta,b,mu_hat,rho,d,n,sigma,psi,inv_psi,pre_psi] = DiffKrigingSetup(X,Yce,Ye,rho_fixed)
     n = size(X,1);
 
     % Calculate the distance matrix
     pre_psi = CalculatePrePsiMatrix(X, n);   
     
     fun = @(solved)(-CalculateMLEDiff(pre_psi,solved(1),Ye,Yce,solved(2),n));
-    solved = [0.2, 1.9];
-    options = optimset('MaxFunEvals',100000);
+    solved = [1.0, 1.0];
+    options = optimset('MaxFunEvals',10000);
     output = fminsearch(fun,solved,options);
     theta = output(1);
+    if theta < 1e-3
+        theta = 1e-3;
+    end
     rho = output(2);
-
-%     rho = 1.87;
-%     fun = @(solved)(-CalculateMLEDiff(pre_psi,solved,Ye,Yce,rho,n));
-%     theta = fminsearch(fun,1.0);
     
+    % Sets rho to value used in contrived forrester paper output
+    if rho_fixed
+        rho = 1.87;
+        fun = @(solved)(-CalculateMLEDiff(pre_psi,solved,Ye,Yce,rho,n));
+        theta = fminsearch(fun,1.0);
+    end
+
     % Calculate sigma, mu, and b constants
     [psi,inv_psi] = CalculatePsiMatrix(pre_psi,theta);
     d = Ye-rho*Yce;
@@ -137,21 +282,73 @@ end
 
 % Calculate sample points from the specified "Expensive" test function
 % This function example is from Forrester 2008
-function y_samp = ExpensiveTestFunction(x_samp)
-    y_samp = (6.*x_samp-2).^2.*sin(12.*x_samp-4);
+function y_samp = ExpensiveTestFunction(fxn_ind,Xin)
+    if fxn_ind == 1
+        y_samp = (6.*Xin-2).^2.*sin(12.*Xin-4);
+    elseif fxn_ind == 2
+        y_samp = sin(2*pi.*(Xin-0.1))+Xin.^2;
+    elseif fxn_ind == 3
+        y_samp = Xin.*sin(Xin)./10;
+    elseif fxn_ind == 4
+        y_samp = cos(3.5*pi.*Xin).*exp(-1.4.*Xin);
+    elseif fxn_ind == 5
+        y_samp = 4-2.1.*Xin(:,1).^4+(1/3).*Xin(:,1).^6+Xin(:,1).*Xin(:,2)-4.*Xin(:,2).^2+4.*Xin(:,2).^4;
+    else
+        disp('invalid function index');
+    end
 end
 
 % Calculate sample points from the specified "Cheap" test function
 % This function example is from Forrester 2008
-function y_samp = CheapTestFunction(x_samp)
-    y_samp = 0.5*ExpensiveTestFunction(x_samp)+10*(x_samp-0.5)-5;
+function y_samp = CheapTestFunction(fxn_ind,Xin)
+    if fxn_ind == 1
+        y_samp = 0.5*ExpensiveTestFunction(fxn_ind,Xin)+10*(Xin-0.5)-5;
+    elseif fxn_ind == 2
+        y_samp = sin(2*pi.*(Xin-0.1));
+    elseif fxn_ind == 3
+        y_samp = Xin.*sin(Xin)./10 + Xin./10;
+    elseif fxn_ind == 4
+        y_samp = cos(3.5*pi.*Xin).*exp(-1.4.*Xin) + 0.75.*Xin.^2;
+    elseif fxn_ind == 5
+        y_samp = 4-0.5.*Xin(:,1).^4+(0.04).*Xin(:,1).^6+0.5.*Xin(:,1).*Xin(:,2)-1.96.*Xin(:,2).^2+0.96.*Xin(:,2).^4;
+    else
+        disp('invalid function index');
+    end
+end
+
+% Function returns the bounds and input dimensions of the function of interest
+function [xmin,xmax,dim] = FunctionBounds(fxn_ind)
+    if fxn_ind == 1
+        dim = 1;
+        xmin = 0;
+        xmax = 1;
+    elseif fxn_ind == 2
+        dim = 1;
+        xmin = 0;
+        xmax = 1;
+    elseif fxn_ind == 3
+        dim = 1;
+        xmin = 0;
+        xmax = 10;
+    elseif fxn_ind == 4
+        dim = 1;
+        xmin = 0;
+        xmax = 1;
+    elseif fxn_ind == 5
+        xmin = zeros(2,1);
+        dim = 2;
+        xmin(1) = -2;
+        xmin(2) = -2;
+        xmax(1) = 2;
+        xmax(2) = 2;
+    end
 end
 
 function y_samp = LinearCheapFunction(x_samp)
     x_lo = 0;
     x_hi = 1;
-    y_lo = ExpensiveTestFunction(0);
-    y_hi = ExpensiveTestFunction(1);
+    y_lo = ExpensiveTestFunction(1,0);
+    y_hi = ExpensiveTestFunction(1,1);
     y_samp = (y_hi-y_lo)/(x_hi-x_lo)*(x_samp-x_lo)-y_lo;
 end
 
@@ -178,7 +375,8 @@ function pre_psi_ij = CalculatePrePsiMatrix( X, n_samp)
     pre_psi_ij = zeros(n_samp);
     for i = 1:n_samp
         for j = 1:n_samp
-            pre_psi_ij(i,j)=abs(X(i)-X(j))^2;
+            diffX = X(i,:) - X(j,:);
+            pre_psi_ij(i,j)=dot(diffX,diffX);
         end
     end
 end
@@ -189,7 +387,8 @@ function [psi_ec, psi_ce] = CalculatePsiMatrix_MF( theta_c, Xe, Xc, ne, nc)
     psi_ce = zeros(nc,ne);
     for i = 1:ne
         for j = 1:nc
-            psi_ec(i,j) = exp(-theta_c*((Xe(i)-Xc(j))^2));
+            diffX = Xe(i,:)-Xc(j,:);
+            psi_ec(i,j) = exp(-theta_c*dot(diffX,diffX));
             psi_ce(j,i) = psi_ec(i,j);
         end
     end
@@ -198,7 +397,10 @@ end
 % Calculate the psi correlation matrix
 function [psi_ij,inv_psi_ij] = CalculatePsiMatrix( pre_psi_ij, theta)
     psi_ij = exp(-theta * pre_psi_ij);
+    disp(psi_ij);
     inv_psi_ij = inv(psi_ij);
+    disp(inv_psi_ij);
+    disp(inv_psi_ij(1,1));
 end
 
 % Generate C matrix from calculated Psi matrices and other kriging
@@ -282,11 +484,13 @@ function y_pred = CoKrigingPrediction(x_new, Xc, Xe, Yck, inv_C, theta_c, theta_
     psic_e_new = zeros(ne,1);
     psid_e_new = zeros(ne,1);
     for i = 1:nc
-        psic_c_new(i,1) = exp(-theta_c*((x_new-Xc(i))^2));
+        diffX = x_new-Xc(i,:);
+        psic_c_new(i,1) = exp(-theta_c*dot(diffX,diffX));
     end
     for i = 1:ne
-        psic_e_new(i,1) = exp(-theta_c*((x_new-Xe(i))^2));
-        psid_e_new(i,1) = exp(-theta_d*((x_new-Xe(i))^2));
+        diffX = x_new-Xe(i,:);
+        psic_e_new(i,1) = exp(-theta_c*dot(diffX,diffX));
+        psid_e_new(i,1) = exp(-theta_d*dot(diffX,diffX));
     end
     c_vec = zeros(nc+ne,1);
     c_vec(1:nc,1) = rho*sigma_c*psic_c_new;
@@ -295,45 +499,102 @@ function y_pred = CoKrigingPrediction(x_new, Xc, Xe, Yck, inv_C, theta_c, theta_
 end
 
 % Plot Co-kriging model
-function [X_krig, Y_krig] = PlotCoKrigingModel(name, xmin, xmax, neval, Xc, Xe, Yck, inv_C, theta_c, theta_d, sigma_c, sigma_d, rho, mu_hat_ck, nc, ne)
-    X_eval = linspace(xmin,xmax,neval);
-    Y_hat = zeros(neval,1);
-    for ind = 1:neval
-        Y_hat(ind,1) = CoKrigingPrediction(X_eval(ind), Xc, Xe, Yck, inv_C, theta_c, theta_d, sigma_c, sigma_d, rho, mu_hat_ck, nc, ne);
+function [X_krig, Y_krig] = PlotCoKrigingModel(name, xmin, xmax, neval, Xc, Yc, Xe, Ye, Yck, inv_C, theta_c, theta_d, sigma_c, sigma_d, rho, mu_hat_ck, nc, ne, fxn_id, rho_fixed)    
+    dim = size(Xc,2);
+    if dim == 1
+        X_eval = linspace(xmin(1),xmax(1),neval);
+        Y_reale = ExpensiveTestFunction(fxn_id,X_eval);
+        Y_realc = CheapTestFunction(fxn_id,X_eval);
+        Y_hat = zeros(neval,1);
+        for ind = 1:neval
+            Y_hat(ind,1) = CoKrigingPrediction(X_eval(ind), Xc, Xe, Yck, inv_C, theta_c, theta_d, sigma_c, sigma_d, rho, mu_hat_ck, nc, ne);
+        end
+        figure('Name',name);
+        plot(X_eval,Y_reale,'b-','LineWidth',2,'DisplayName','Expensive')
+        hold on        
+        plot(X_eval,Y_realc,'r-','LineWidth',2,'DisplayName','Cheap')
+        hold on        
+        plot(X_eval,Y_hat,'g--','LineWidth',2,'DisplayName','Co-kriging');
+        hold on
+        if rho_fixed
+            csv_data = readmatrix('cokrigingdata.txt');
+            plot(csv_data(:,1),csv_data(:,2),'k:','LineWidth',2,'DisplayName','Forrester');
+        end
+        % Plot the cheap and expensive data sets
+        scatter(Xc,Yc,'DisplayName','Data C','ColorVariable','b');
+        hold on
+        scatter(Xe,Ye,'DisplayName','Data E');
+        hold on
+        xlabel('X');
+        ylabel('Y');
+        title('CoKriging Prediction');
+    elseif dim == 2
+        X_eval = zeros(neval*neval,2);
+        x1_vec = linspace(xmin(1),xmax(1),neval);
+        x2_vec = linspace(xmin(2),xmax(2),neval);
+        Y_hat = zeros(neval,1);
+        for col = 1:neval
+            for row = 1:neval
+                ind = row + (col-1)*neval;
+                X_eval(ind,:) = [x1_vec(row),x2_vec(col)];
+                Y_hat(ind,1) = CoKrigingPrediction(X_eval(ind,:), Xc, Xe, Yck, inv_C, theta_c, theta_d, sigma_c, sigma_d, rho, mu_hat_ck, nc, ne);
+            end
+        end
+        figure('Name',name);
+        plot3(X_eval(:,1),X_eval(:,2),Y_hat,'bo','LineWidth',2,'DisplayName','Cokriging');
+        hold on
+        % Plot the cheap and expensive data sets
+        scatter3(Xc(:,1),Xc(:,2),Yc,'DisplayName','Cheap');
+        hold on
+        scatter3(Xe(:,1),Xe(:,2),Ye,'DisplayName','Expensive');
+        hold on
+        xlabel('X');
+        ylabel('Y');
+        title('CoKriging Prediction');
+    
+    else
+        disp('Cannot plot in greater than 3 dimensions')
     end
-    figure('Name',name);
-    plot(X_eval,Y_hat,'g-','LineWidth',2);
-    hold on
-    % Plot the cheap and expensive functions too
-    Yc_real = CheapTestFunction(X_eval);
-    Ye_real = ExpensiveTestFunction(X_eval);
-    plot(X_eval,Yc_real,'r-','LineWidth',2,'DisplayName','Cheap');
-    hold on
-    plot(X_eval,Ye_real,'b-','LineWidth',2,'DisplayName','Expensive');
-    hold on
-    xlabel('X');
-    ylabel('Y');
-    title('CoKriging Prediction');
     X_krig = X_eval;
     Y_krig = Y_hat;
 end
 
 % Plot Kriging Model
 function [X_krig, Y_krig] = PlotKrigingModel(name, xmin, xmax, neval, X, Y, theta, b, mu_hat, n_samp)
-    X_eval = linspace(xmin,xmax,neval);
-    Y_hat = zeros(neval,1);
-    for ind = 1:neval
-        Y_hat(ind,1) = KrigingPrediction(X_eval(ind), X, theta, b, mu_hat, n_samp);
+    dim = size(X,2);
+    if dim == 1
+        X_eval = linspace(xmin,xmax,neval);
+        Y_hat = zeros(neval,1);
+        for ind = 1:neval
+            Y_hat(ind,1) = KrigingPrediction(X_eval(ind), X, theta, b, mu_hat, n_samp);
+        end
+        figure('Name',name);
+        plot(X_eval,Y_hat,'r-','LineWidth',2);
+        hold on
+        scatter(X,Y);
+        xlabel('X');
+        ylabel('Y');
+        title('Kriging Prediction');
+        X_krig = X_eval;
+        Y_krig = Y_hat;
+    elseif dim == 2
+        X_eval = EqualSpacedSamples(neval,xmin,xmax,dim);
+        Y_hat = zeros(neval^2,1);
+        for ind = 1:neval^2
+            Y_hat(ind,1) = KrigingPrediction(X_eval(ind), X, theta, b, mu_hat, n_samp);
+        end
+        figure('Name',name);
+        scatter3(X_eval(:,1),X_eval(:,2),Y_hat);
+        hold on
+        scatter3(X(:,1),X(:,2),Y);
+        xlabel('X');
+        ylabel('Y');
+        title('Kriging Prediction');
+        X_krig = X_eval;
+        Y_krig = Y_hat;
+    else
+        disp('Cannot plot higher dimensions')
     end
-    figure('Name',name);
-    plot(X_eval,Y_hat,'r-','LineWidth',2);
-    hold on
-    scatter(X,Y);
-    xlabel('X');
-    ylabel('Y');
-    title('Kriging Prediction');
-    X_krig = X_eval;
-    Y_krig = Y_hat;
 end
 
 % Evaluate Kriging influence of each point (Debugging fxn only)
@@ -358,18 +619,47 @@ function [dist,var] = GenerateSemiVariogram( X, Y, n_samp)
     end
 end
 
-function [X_real, Yc_real, Ye_real] = PlotMultiFidelityFunctions(n_test)
-    X_real = linspace(0,1,n_test);
-    Yc_real = CheapTestFunction(X_real);
-    Ye_real = ExpensiveTestFunction(X_real);
-    figure('Name','Multi-Fidelity Functions')
-    plot(X_real,Yc_real,'r-','LineWidth',2,'DisplayName','Cheap');
-    hold on
-    plot(X_real,Ye_real,'b-','LineWidth',2,'DisplayName','Expensive');
-    hold on
-    xlabel('X');
-    ylabel('Y');
-    title('Multi-Fidelity Functions');
+function error = CalculateModelError( Xc, Xe, Yck, inv_C, theta_c, theta_d, sigma_c, sigma_d, rho, mu_hat_ck, nc, ne, fxn_ind,n_test)
+    error = 0;
+    [xmin,xmax,~] = FunctionBounds(fxn_ind);
+    X_eval = linspace(xmin(1),xmax(1),n_test);
+    Y_reale = ExpensiveTestFunction(fxn_ind,X_eval);
+    for ind = 1:n_test
+       Y_hat = CoKrigingPrediction(X_eval(ind), Xc, Xe, Yck, inv_C, theta_c, theta_d, sigma_c, sigma_d, rho, mu_hat_ck, nc, ne);
+       error = error + sqrt((Y_hat-Y_reale(ind))^2);
+    end
+    error = error/n_test;
+end
+
+function [X_real, Yc_real, Ye_real] = PlotMultiFidelityFunctions(fxn_ind, n_test)
+    [xmin,xmax,dim] = FunctionBounds(fxn_ind);
+    if dim == 1
+        X_real = EqualSpacedSamples(n_test,xmin,xmax,dim);
+        Yc_real = CheapTestFunction(fxn_ind,X_real);
+        Ye_real = ExpensiveTestFunction(fxn_ind,X_real);
+        figure('Name','Multi-Fidelity Functions')
+        plot(X_real,Yc_real,'r-','LineWidth',2,'DisplayName','Cheap');
+        hold on
+        plot(X_real,Ye_real,'b-','LineWidth',2,'DisplayName','Expensive');
+        hold on
+        xlabel('X');
+        ylabel('Y');
+        title('Multi-Fidelity Functions');
+    elseif dim == 2        
+        X_real = EqualSpacedSamples(n_test,xmin,xmax,dim);
+        Yc_real = CheapTestFunction(fxn_ind,X_real);
+        Ye_real = ExpensiveTestFunction(fxn_ind,X_real);
+        figure('Name','Multi-Fidelity Functions')
+        scatter3(X_real(:,1),X_real(:,2),Yc_real,'DisplayName','Cheap');
+        hold on
+        scatter3(X_real(:,1),X_real(:,2),Ye_real,'DisplayName','Expensive');
+        hold on
+        xlabel('X');
+        ylabel('Y');
+        title('Multi-Fidelity Functions');
+    else
+        disp('Dim > 2: No visual available');
+    end
 end
 
 function plotItAll(Xc, Yc, Xe, Ye, X_real, Yc_real, Ye_real, X_ke, Y_ke, X_kc, Y_kc, X_ck, Y_ck)
