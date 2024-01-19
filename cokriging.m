@@ -19,10 +19,14 @@ fxn_ind = 1;
 [xmin,xmax,dim] = FunctionBounds(fxn_ind);
 
 % Sample the expensive and cheap functions
-Xe = EqualSpacedSamples(n_e,xmin,xmax,dim);
+%Xe = EqualSpacedSamples(n_e,xmin,xmax,dim);
+Xe = RandSpacedSamples(n_e,xmin,xmax);
+Xe = sort(Xe,1,"ascend");
 Ye = ExpensiveTestFunction(fxn_ind,Xe);
 
-Xc = EqualSpacedSamples(n_c,xmin,xmax,dim);
+%Xc = RandSpacedSamples(n_c,xmin,xmax);
+Xc = RandSpacedSamples(n_c,xmin,xmax);
+Xc = sort(Xc,1,"ascend");
 Yc = CheapTestFunction(fxn_ind,Xc);
 
 
@@ -37,7 +41,7 @@ Yc = CheapTestFunction(fxn_ind,Xc);
 %% Organized output methods
 %TwoDimCoKriging();
 
-%TestDeltaNc(1)
+GenerateCoKrigingModel(1,11,4)
 
 %ForresterPaperResults();
 
@@ -121,6 +125,54 @@ function TestDeltaNc(fxn_ind)
     ylabel('RMS Error')
 end
 
+function GenerateCoKrigingModel(fxn_ind,nc,ne)
+
+    n_test = 300;
+
+    %% Get bounds
+    [xmin,xmax,dim] = FunctionBounds(fxn_ind);
+
+    %% Generate evaluation locations
+    X_eval = linspace(xmin,xmax,n_test);
+    X_eval = transpose(X_eval);
+    Yhat = zeros(n_test,1);
+
+    %% Generate Expensive Dataset for plotting comparison
+    Y_reale = ExpensiveTestFunction(fxn_ind,X_eval);
+
+    %% Cheap model samples    
+    % Sample the expensive and cheap functions
+    % Sample the expensive and cheap functions
+    Xe = EqualSpacedSamples(ne,xmin,xmax,dim);
+    %Xe = RandSpacedSamples(ne,xmin,xmax);
+    Xe = sort(Xe,1,"ascend");
+    Ye = ExpensiveTestFunction(fxn_ind,Xe);
+    
+    Xc = RandSpacedSamples(nc,xmin,xmax);
+    %Xc = RandSpacedSamples(nc,xmin,xmax);
+    Xc = sort(Xc,1,"ascend");
+    Yc = CheapTestFunction(fxn_ind,Xc);
+    
+    %% Generate the cokriging model
+    [inv_C,theta_c,theta_d,sigma_c,sigma_d,rho,mu_hat_ck,nc,ne]=CokrigingSetup(Xc,Xe,Yc,Ye,xmin,xmax,false,false,fxn_ind);
+    Yck = [Yc;Ye];
+    error = CalculateModelError( Xc, Xe, Yck, inv_C, theta_c, theta_d, sigma_c, sigma_d, rho, mu_hat_ck, nc, ne, fxn_ind,n_test);
+    for i = 1:n_test
+        Yhat(i) = CoKrigingPrediction(X_eval(i), Xc, Xe, Yck, inv_C, theta_c, theta_d, sigma_c, sigma_d, rho, mu_hat_ck, nc, ne);
+    end
+
+    %% Plot all the co-kriging model
+    figure('Name','Co-kriging Fit');
+    plot(X_eval,Y_reale,'b-','LineWidth',2,'DisplayName','Expensive')
+    hold on
+    plot(X_eval,Yhat,'r--','LineWidth',2,'DisplayName','CK Model');
+    hold on
+    xlabel('X')
+    ylabel('Y')
+
+    %disp('The total error is: ', error)
+end
+
 function TwoDimCoKriging()
     %% Set up some sampling constants for graph purposes
     n_test = 300;
@@ -163,12 +215,21 @@ function Xsamp = EqualSpacedSamples(n,xmin,xmax,dim)
     end
 end
 
+% Random spaced samples only works for 1dim currently
+function Xsamp = RandSpacedSamples(n,xmin,xmax)
+    Xsamp = (xmax-xmin).*rand(n,1) + xmin;
+end
 % Co-Kriging Setup Function
 function [inv_C,theta_c,theta_d,sigma_c,sigma_d,rho,mu_hat_ck,nc,ne]=CokrigingSetup(Xc,Xe,Yc,Ye,xmin,xmax,rho_fixed,Verbose,fxn_ind)
 
     %% Solve for the kriging model of the "Cheap" data    
-    [theta_c, b_c, mu_hat_c, nc, sigma_c, psic_c, ~, ~] = KrigingSetup(Xc,Yc);
-    
+    [theta_c, b_c, mu_hat_c, nc, sigma_c, psic_c, invpsi_c, ~] = KrigingSetup(Xc,Yc);
+
+    %%%% Debugging step %%%%%%%%%%%%%%%%%%%%
+    writematrix(psic_c,'cheapPsi');
+    writematrix(invpsi_c,'cheapInvPsi');
+    %%%% Debugging step %%%%%%%%%%%%%%%%%%%%
+
     % Debugging step
     % Plot the kriging model of the cheap function
     if Verbose
@@ -177,7 +238,13 @@ function [inv_C,theta_c,theta_d,sigma_c,sigma_d,rho,mu_hat_ck,nc,ne]=CokrigingSe
     
     %% ONLY FOR DEBUG solve for the kriging model of the "Expensive" data
     if Verbose        
-        [theta_e, b_e, mu_hat_e, ne, ~, ~, ~, ~] = KrigingSetup(Xe,Ye);
+        [theta_e, b_e, mu_hat_e, ne, ~, psi_e, invpsi_e, ~] = KrigingSetup(Xe,Ye);
+
+        %%%% Debugging step %%%%%%%%%%%%%%%%%%%%
+        writematrix(psi_e,'expPsi');
+        writematrix(invpsi_e,'expInvPsi');
+        %%%% Debugging step %%%%%%%%%%%%%%%%%%%%
+
         % Plot the kriging model of the cheap function    
         PlotKrigingModel('Expensive Kriging Model', xmin, xmax, 300, Xe, Ye, theta_e, b_e, mu_hat_e, ne);
     end
@@ -192,8 +259,13 @@ function [inv_C,theta_c,theta_d,sigma_c,sigma_d,rho,mu_hat_ck,nc,ne]=CokrigingSe
         yc_hat_xe(ind,1) = KrigingPrediction(Xe(ind), Xc, theta_c, b_c, mu_hat_c, nc);
     end
     
-    [theta_d,b_d,mu_hat_d,rho,d,ne,sigma_d,psid_e,~,~] = DiffKrigingSetup(Xe,yc_hat_xe,Ye,rho_fixed);
+    [theta_d,b_d,mu_hat_d,rho,d,ne,sigma_d,psid_e,invpsid_e,~] = DiffKrigingSetup(Xe,yc_hat_xe,Ye,rho_fixed);
     
+    %%%% Debugging step %%%%%%%%%%%%%%%%%%%%
+    writematrix(psid_e,'diffPsi');
+    writematrix(invpsid_e,'diffInvPsi');
+    %%%% Debugging step %%%%%%%%%%%%%%%%%%%%
+
     % Debugging Step
     if Verbose
         % Plot the kriging model of the difference
@@ -209,8 +281,13 @@ function [inv_C,theta_c,theta_d,sigma_c,sigma_d,rho,mu_hat_ck,nc,ne]=CokrigingSe
     [psic_e, ~] = CalculatePsiMatrix(pre_psi_e, theta_c);
     
     % Assemble the C matrix from the above parts
-    [~, inv_C] = CalculateCovariance(ne, nc, sigma_c, psic_c, rho, psic_ce, psic_ec, psic_e, sigma_d, psid_e);
-    
+    [Cmat, inv_C] = CalculateCovariance(ne, nc, sigma_c, psic_c, rho, psic_ce, psic_ec, psic_e, sigma_d, psid_e);
+
+    %%%% Debugging step %%%%%%%%%%%%%%%%%%%%
+    writematrix(Cmat,'CMat')
+    writematrix(inv_C,'invCMat');
+    %%%% Debugging step %%%%%%%%%%%%%%%%%%%%
+
     % Assemble the combined y vector of cheap and expensive values
     Yck = [Yc;Ye];
     

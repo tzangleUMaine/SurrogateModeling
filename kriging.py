@@ -50,7 +50,7 @@ class Kriging:
 
     def Gaussian(self,x0,x1):
         #probably could vectorize this
-        np.power(np.exp(-np.abs(x0-x1)),2)
+        np.exp(-np.abs(np.power((x0-x1),2)))
         return
 
 if __name__ == "__main__":
