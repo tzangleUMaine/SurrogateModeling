@@ -1,80 +1,71 @@
 import numpy as np
 import matplotlib.pyplot as plt
+import model
+import scipy.optimize
 
-def main():
-    # Start with a synthetic dataset
-    rng = np.random.RandomState(0)
-    data = np.linspace(0,30,num=1_000).reshape(-1,1)
-    target = np.sin(data).ravel()
-    
-    training_sample_indices = rng.choice(np.arange(0, 400), size=40, replace=False)
-    training_data = data[training_sample_indices]
-    training_noisy_target = target[training_sample_indices] + 0.5 * rng.randn(
-        len(training_sample_indices)
-    )
-    
-    plt.plot(data, target, label="True signal", linewidth=2)
-    plt.scatter(
-        training_data,
-        training_noisy_target,
-        color="black",
-        label="Noisy measurements",
-    )
-    plt.legend()
-    plt.xlabel("data")
-    plt.ylabel("target")
-    _ = plt.title(
-        "Illustration of the true generative process and \n"
-        "noisy measurements available during training"
-    )
-    plt.show()
-
-class Kriging:
+class Kriging(model.Model):
     def __init__(self,x_mat,y_vec):
         # Expects input values of:
-        # x_mat: matrix of explanatory variables
-        # y_vec: vector of response variables
-        self.x = x_mat
-        self.y = y_vec
+
+        super().__init__(x_mat,y_vec)
+
+        self.plot_data()
 
         self.d, self.n = np.shape(self.x)
 
-        # Make a vector of ones
-        F = np.ones(self.n,1)
+        self.pre_psi = self.calculate_pre_psi_matrix()
 
-        #Generate the correlation matrix for the given x values
-        self.corr_mat = np.zeros(self.n,self.n)
-        for i in range(1,self.n):
-            for j in range(i,self.n):
-                val = self.Gaussian(self.x[i],self.x[j])
-                self.corr_mat[i,j] = self.corr_mat[j,i] = val
-        self.mu = self.calculateKrigingMean()
-        self.theta = np.zeros(self.d)
+        self.theta = self.calculate_hyper_params()
 
-    def calculateKrigingMean(self):
-        F = np.ones(self.n,1)
-        mu = np.transpose(F)*self.inv_psi*self.y
-        mu = mu/(np.transpose(F)*self.inv_psi*F)
-        return mu
-    
-    def calculateSigma(self):
-        F = np.ones(self.n,1)
-        sigma = (1.0/self.n)*np.transpose(self.y-F*self.mu)*self.inv_psi*(self.y-F*self.mu)
-        return sigma
+        self.psi, self.inv_psi = self.calculate_psi_matrix(self.theta)
 
-    def calculateB(self):
-        b = self.psi_inv*(self.y-np.ones(self.n,1)*self.mu)
-    def calculateConstants(self):
-        pre_psi_ij = np.zeros(self.n)
-        #for i in range(self.n):
+        self.mu = self.calculate_kriging_mean(self.inv_psi)
 
-    def calculatePrePsiMatrix(self):
+        self.sigma = self.calculate_sigma(self.mu,self.inv_psi)
+
+        self.b = self.calculate_b()
+
+    def calculate_hyper_params(self):
+        fun: lambda theta: (-self.calculate_mle(theta))
+        theta_opt = scipy.optimize.fmin(func=fun,theta0=np.ones(self.d,1))
+        return theta_opt
+
+    def calculate_pre_psi_matrix(self):
         pre_psi_ij = np.zeros(self.n)
         for i in range(1,self.n):
             for j in range(1,self.n):
                 diffX = self.x[i,:] - self.x[j,:]
                 pre_psi_ij[i,j] = np.dot(diffX,diffX)
         return pre_psi_ij
+    
+    def calculate_kriging_mean(self,inv_psi):
+        F = np.ones(self.n,1)
+        mu = np.transpose(F)*self.inv_psi*self.y
+        mu = mu/(np.transpose(F)*self.inv_psi*F)
+        return mu
+    
+    def calculate_sigma(self,mu,inv_psi):
+        F = np.ones(self.n,1)
+        sigma = (1.0/self.n)*np.transpose(self.y-F*mu)*inv_psi*(self.y-F*mu)
+        return sigma
 
-if __name__ == "__main__":
-    main()
+    def calculate_b(self):
+        b = self.psi_inv*(self.y-np.ones(self.n,1)*self.mu)
+        return b
+
+    def calculate_psi_matrix(self, theta):
+        psi_ij = np.exp(-theta * self.pre_psi)
+        inv_psi_ij = np.invert(psi_ij)
+        return psi_ij,inv_psi_ij
+
+    def calculate_mle(self,theta):
+        psi,inv_psi = self.calculate_psi_matrix(theta)
+        mu_hat = self.calculate_kriging_mean(inv_psi)
+        sigma = self.calculate_sigma(inv_psi,mu_hat)
+        mle = -0.5*(self.n*np.log(sigma)+np.log(np.linalg.det(psi)))
+        return mle
+
+    def evaluate(self, x_new):
+        x_diff = x_new-self.x
+        y_pred = self.b @ np.exp(-self.theta*(np.dot(x_diff,x_diff))) + self.mu
+        return y_pred
