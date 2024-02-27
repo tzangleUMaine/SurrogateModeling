@@ -21,3 +21,16 @@ class Model:
             "Input Data Set"
         )
         plt.show()
+
+    def plot_model(self,x_vals):
+        y_hat = np.zeros(len(x_vals[:,0]))
+        for i, x in enumerate(x_vals):
+            y_hat[i] = self.evaluate(x)
+        plt.scatter(x_vals, y_hat, color = "black")
+        plt.legend()
+        plt.xlabel("x")
+        plt.ylabel("y_hat")
+        _ = plt.title(
+            "Model Values"
+        )
+        plt.show()

@@ -148,7 +148,7 @@ function GenerateCoKrigingModel(fxn_ind,nc,ne)
     Xe = sort(Xe,1,"ascend");
     Ye = ExpensiveTestFunction(fxn_ind,Xe);
     
-    Xc = RandSpacedSamples(nc,xmin,xmax);
+    Xc = EqualSpacedSamples(nc,xmin,xmax,dim);
     %Xc = RandSpacedSamples(nc,xmin,xmax);
     Xc = sort(Xc,1,"ascend");
     Yc = CheapTestFunction(fxn_ind,Xc);
@@ -262,8 +262,8 @@ function [inv_C,theta_c,theta_d,sigma_c,sigma_d,rho,mu_hat_ck,nc,ne]=CokrigingSe
     [theta_d,b_d,mu_hat_d,rho,d,ne,sigma_d,psid_e,invpsid_e,~] = DiffKrigingSetup(Xe,yc_hat_xe,Ye,rho_fixed);
     
     %%%% Debugging step %%%%%%%%%%%%%%%%%%%%
-    writematrix(psid_e,'diffPsi');
-    writematrix(invpsid_e,'diffInvPsi');
+    %writematrix(psid_e,'diffPsi');
+    %writematrix(invpsid_e,'diffInvPsi');
     %%%% Debugging step %%%%%%%%%%%%%%%%%%%%
 
     % Debugging Step
