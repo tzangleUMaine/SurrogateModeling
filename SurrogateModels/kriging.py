@@ -111,9 +111,12 @@ class DiffKriging(Kriging):
     
     def calculate_hyper_params(self,theta0,scale_factor0):
         
-        init_vars = np.vstack((theta0,scale_factor0))
-        result = scipy.optimize.fmin(self.fun, init_vars)
-        theta_opt, scale_factor_opt = result
+        init_vars = np.append(theta0,scale_factor0)
+        b = (1e-3,None)
+        bounds = (b,b)
+        result = scipy.optimize.minimize(self.fun, init_vars, bounds=bounds)
+        theta_opt = result.x[0]
+        scale_factor_opt = result.x[1]
         return theta_opt, scale_factor_opt
     
     def calculate_mle(self,theta,scale_factor):

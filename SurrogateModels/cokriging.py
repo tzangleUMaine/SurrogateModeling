@@ -121,8 +121,8 @@ class CoKriging(mf_model.MFModel):
         n = self.n_hf+self.n_lf
         C_mat = np.zeros((n,n))
         C_mat[0:self.n_lf,0:self.n_lf]=self.kriging_lf.sigma*self.kriging_lf.psi
-        C_mat[0:self.n_lf,self.n_lf+1:n] = self.kriging_diff.rho*self.kriging_lf.sigma*psic_ce
-        C_mat[self.n_lf+1:n,0:self.n_lf] = self.kriging_diff.rho*self.kriging_lf.sigma*psic_ec
-        C_mat[self.n_lf+1:n,self.n_lf+1:n] = self.kriging_diff.rho**2*self.kriging_lf.sigma*psic_e+self.kriging_diff.sigma*self.kriging_diff.psi
+        C_mat[0:self.n_lf,self.n_lf+1:n] = self.kriging_diff.scale_factor*self.kriging_lf.sigma*psic_ce
+        C_mat[self.n_lf+1:n,0:self.n_lf] = self.kriging_diff.scale_factor*self.kriging_lf.sigma*psic_ec
+        C_mat[self.n_lf+1:n,self.n_lf+1:n] = self.kriging_diff.scale_factor**2*self.kriging_lf.sigma*psic_e+self.kriging_diff.sigma*self.kriging_diff.psi
         inv_C_mat = np.linalg.inv(C_mat)
         return C_mat,inv_C_mat
