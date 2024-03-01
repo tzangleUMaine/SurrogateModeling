@@ -11,8 +11,8 @@ class CoKriging(mf_model.MFModel):
         super().__init__(x_lf,y_lf,x_hf,y_hf)
 
         # Store the shapes of the input matrices
-        self.n_hf, self.d_hf = np.shape(self.x)
-        self.n_lf, self.d_lf = np.shape(self.x_lf)
+        self.n_hf, self.d = np.shape(self.x)
+        self.n_lf, __ = np.shape(self.x_lf)
         self.n = self.n_lf + self.n_hf
 
         # Set up the low fidelity kriging model
@@ -35,7 +35,7 @@ class CoKriging(mf_model.MFModel):
         # Set up the cokriging covariance matrix
         psi_ec, psi_ce = self.calculate_psi_matrix()
 
-        self.C, self.inv_C = self.calculate_covariance(psi_ec,psi_ce,self.kriging_hf.psi)
+        self.C, self.inv_C = self.calculate_covariance(psi_ce,psi_ec,self.kriging_hf.psi)
         
         # Assemble the combined y vector of cheap and expensive values
         self.yck = np.vstack((self.y_lf, self.y))
@@ -85,26 +85,25 @@ class CoKriging(mf_model.MFModel):
         return mle
         
     def evaluate(self, x_new):
-        F = np.ones((self.n,1))
-        psic_new = np.zeros((self.n_lf,1))
-        psie_new = np.zeros((self.n_hf,1))
-        psid_new = np.zeros((self.n_hf,1))
 
-        for i in range(self.n_lf):
-            diffX = x_new-self.x_lf[i,:]
-            psic_new[i,1] = np.exp(-self.kriging_lf.theta*np.dot(diffX,diffX))
+        F = np.ones((self.n_lf,self.d))
+        diff_norm = x_new*F - self.x_lf
+        diff_norm_dot = diff_norm * diff_norm
+        psic_new = np.exp(-self.kriging_lf.theta*diff_norm_dot)
 
-        for i in range(self.n_hf):
-            diffX = x_new-self.x[i,:]
-            psie_new[i,1] = np.exp(-self.kriging_lf.theta*np.dot(diffX,diffX))
-            psid_new[i,1] = np.exp(-self.kriging_diff.theta*np.dot(diffX,diffX))
+        F = np.ones((self.n_hf,self.d))
+        diff_norm = x_new*F - self.x
+        diff_norm_dot = diff_norm * diff_norm
+        psie_new = np.exp(-self.kriging_lf.theta*diff_norm_dot)
+        psid_new = np.exp(-self.kriging_diff.theta*diff_norm_dot)
 
         c_vec = np.zeros((self.n,1))
-        c_vec[0:self.n_lf,1] = self.kriging_diff.scale_factor * self.kriging_lf.sigma * psic_new
-        c_vec[self.lf+1:self.n,1] = self.kriging_diff.scale_factor**2 * self.kriging_lf.sigma *psie_new
-        c_vec[self.lf+1:self.n,1] += self.kriging_diff.sigma*psid_new
+        c_vec[0 : self.n_lf] = self.kriging_diff.scale_factor * self.kriging_lf.sigma * psic_new
+        c_vec[self.n_lf : self.n] = self.kriging_diff.scale_factor**2 * self.kriging_lf.sigma * psie_new
+        c_vec[self.n_lf : self.n] += self.kriging_diff.sigma*psid_new
 
-        y_pred = self.mean + np.transpose(c_vec)*self.inv_C*(self.yck-F*self.mean)
+        F = np.ones((self.n,self.d))
+        y_pred = self.mean + np.transpose(c_vec) @ self.inv_C @ (self.yck-F*self.mean)
         return y_pred
 
     # Calculate the distance relation between multi-fidelity datasets
@@ -121,8 +120,8 @@ class CoKriging(mf_model.MFModel):
         n = self.n_hf+self.n_lf
         C_mat = np.zeros((n,n))
         C_mat[0:self.n_lf,0:self.n_lf]=self.kriging_lf.sigma*self.kriging_lf.psi
-        C_mat[0:self.n_lf,self.n_lf+1:n] = self.kriging_diff.scale_factor*self.kriging_lf.sigma*psic_ce
-        C_mat[self.n_lf+1:n,0:self.n_lf] = self.kriging_diff.scale_factor*self.kriging_lf.sigma*psic_ec
-        C_mat[self.n_lf+1:n,self.n_lf+1:n] = self.kriging_diff.scale_factor**2*self.kriging_lf.sigma*psic_e+self.kriging_diff.sigma*self.kriging_diff.psi
+        C_mat[0:self.n_lf,self.n_lf:n] = self.kriging_diff.scale_factor*self.kriging_lf.sigma*psic_ce
+        C_mat[self.n_lf:n,0:self.n_lf] = self.kriging_diff.scale_factor*self.kriging_lf.sigma*psic_ec
+        C_mat[self.n_lf:n,self.n_lf:n] = self.kriging_diff.scale_factor**2*self.kriging_lf.sigma*psic_e+self.kriging_diff.sigma*self.kriging_diff.psi
         inv_C_mat = np.linalg.inv(C_mat)
         return C_mat,inv_C_mat
