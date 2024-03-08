@@ -154,7 +154,7 @@ function GenerateCoKrigingModel(fxn_ind,nc,ne)
     Yc = CheapTestFunction(fxn_ind,Xc);
     
     %% Generate the cokriging model
-    [inv_C,theta_c,theta_d,sigma_c,sigma_d,rho,mu_hat_ck,nc,ne]=CokrigingSetup(Xc,Xe,Yc,Ye,xmin,xmax,false,false,fxn_ind);
+    [inv_C,theta_c,theta_d,sigma_c,sigma_d,rho,mu_hat_ck,nc,ne]=CokrigingSetup(Xc,Xe,Yc,Ye,xmin,xmax,false,true,fxn_ind);
     Yck = [Yc;Ye];
     error = CalculateModelError( Xc, Xe, Yck, inv_C, theta_c, theta_d, sigma_c, sigma_d, rho, mu_hat_ck, nc, ne, fxn_ind,n_test);
     for i = 1:n_test

@@ -1,6 +1,5 @@
 import numpy as np
 import matplotlib.pyplot as plt
-import kriging
 import cokriging
 import mfs_functions
 
@@ -25,9 +24,12 @@ def main():
     x_vals = np.ones((300,1))
     x_vals[:,0] = np.linspace(0,1,300)
 
-    model.plot_data()
-    model.plot_model(x_vals)
-    stop = True
+    model.plot_data("Cokriging Model")
+    model.plot_model(x_vals,"Cokriging Model")
+    model.kriging_hf.plot_model(x_vals, "Cokriging Model")
+    model.kriging_lf.plot_model(x_vals,"Cokriging Model")
+    model.kriging_diff.plot_model(x_vals,"Diff Model")
+    plt.show()
 
 if __name__ == "__main__":
     main()

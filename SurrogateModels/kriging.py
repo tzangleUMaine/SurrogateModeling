@@ -41,8 +41,7 @@ class Kriging(model.Model):
     
     def calculate_kriging_mean(self,inv_psi):
         F = np.ones((self.n,1))
-        mu = np.transpose(F) @ inv_psi @ self.y
-        mu = mu/(np.transpose(F) @ inv_psi @ F)
+        mu = np.transpose(F) @ inv_psi @ self.y/(np.transpose(F) @ inv_psi @ F)
         return mu
     
     def calculate_sigma(self,inv_psi,mu):
@@ -76,6 +75,9 @@ class Kriging(model.Model):
 
 class DiffKriging(Kriging):    
     def __init__(self,x_mat,yh, yl):
+        #Debugging fun for checking stability
+        self.scale_fixed = True
+
         self.x = x_mat
 
         # Store the size of the inputs
@@ -95,6 +97,9 @@ class DiffKriging(Kriging):
         self.pre_psi = self.calculate_pre_psi_matrix()
 
         self.theta, self.scale_factor = self.calculate_hyper_params(self.theta,self.scale_factor)
+        
+        # Override the scale_factor
+        #self.scale_factor = 1.87
 
         self.psi, self.inv_psi = self.calculate_psi_matrix(self.theta)
 
@@ -110,13 +115,17 @@ class DiffKriging(Kriging):
             return (-self.calculate_mle(theta,scale_factor))
     
     def calculate_hyper_params(self,theta0,scale_factor0):
-        
+        if self.scale_fixed == True:
+            fixed_scale_factor = 1.87
+            fun1 = lambda theta: (-self.calculate_mle(theta,fixed_scale_factor))
+            theta_opt = scipy.optimize.fmin(fun1, theta0)
+            return theta_opt, fixed_scale_factor
         init_vars = np.append(theta0,scale_factor0)
         b = (1e-3,None)
         bounds = (b,b)
         result = scipy.optimize.minimize(self.fun, init_vars, bounds=bounds)
-        theta_opt = result.x[0]
-        scale_factor_opt = result.x[1]
+        theta_opt = result.x[0:-1]
+        scale_factor_opt = result.x[-1]
         return theta_opt, scale_factor_opt
     
     def calculate_mle(self,theta,scale_factor):

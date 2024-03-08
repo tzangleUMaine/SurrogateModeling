@@ -1,8 +1,8 @@
 import numpy as np
 import matplotlib.pyplot as plt
+import scipy.optimize
 import mf_model
 import kriging
-import scipy.optimize
 
 class CoKriging(mf_model.MFModel):
     def __init__(self,x_lf,y_lf,x_hf,y_hf):
@@ -122,6 +122,12 @@ class CoKriging(mf_model.MFModel):
         C_mat[0:self.n_lf,0:self.n_lf]=self.kriging_lf.sigma*self.kriging_lf.psi
         C_mat[0:self.n_lf,self.n_lf:n] = self.kriging_diff.scale_factor*self.kriging_lf.sigma*psic_ce
         C_mat[self.n_lf:n,0:self.n_lf] = self.kriging_diff.scale_factor*self.kriging_lf.sigma*psic_ec
-        C_mat[self.n_lf:n,self.n_lf:n] = self.kriging_diff.scale_factor**2*self.kriging_lf.sigma*psic_e+self.kriging_diff.sigma*self.kriging_diff.psi
+        val1 = self.kriging_diff.scale_factor**2 * self.kriging_lf.sigma * psic_e
+        val2 = self.kriging_diff.sigma*self.kriging_diff.psi
+        C_mat[self.n_lf:n,self.n_lf:n] = self.kriging_diff.scale_factor**2 * self.kriging_lf.sigma * psic_e
+        C_mat[self.n_lf:n,self.n_lf:n] += self.kriging_diff.sigma*self.kriging_diff.psi
+        C_mat.tofile("CMATOUT.txt"," ")
         inv_C_mat = np.linalg.inv(C_mat)
         return C_mat,inv_C_mat
+    
+    
