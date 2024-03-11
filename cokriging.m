@@ -1,4 +1,4 @@
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+0%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%   Co-Kriging   %%%%%%%%%%%%%%%%
 %%%%%%%%%% Troy Zangle %%%%%%%%%%%%
 
@@ -154,7 +154,9 @@ function GenerateCoKrigingModel(fxn_ind,nc,ne)
     Yc = CheapTestFunction(fxn_ind,Xc);
     
     %% Generate the cokriging model
-    [inv_C,theta_c,theta_d,sigma_c,sigma_d,rho,mu_hat_ck,nc,ne]=CokrigingSetup(Xc,Xe,Yc,Ye,xmin,xmax,false,true,fxn_ind);
+    rho_fixed = true;
+    verbose = true;
+    [inv_C,theta_c,theta_d,sigma_c,sigma_d,rho,mu_hat_ck,nc,ne]=CokrigingSetup(Xc,Xe,Yc,Ye,xmin,xmax,rho_fixed,verbose,fxn_ind);
     Yck = [Yc;Ye];
     error = CalculateModelError( Xc, Xe, Yck, inv_C, theta_c, theta_d, sigma_c, sigma_d, rho, mu_hat_ck, nc, ne, fxn_ind,n_test);
     for i = 1:n_test
@@ -593,10 +595,10 @@ function [X_krig, Y_krig] = PlotCoKrigingModel(name, xmin, xmax, neval, Xc, Yc, 
         hold on        
         plot(X_eval,Y_hat,'g--','LineWidth',2,'DisplayName','Co-kriging');
         hold on
-        if rho_fixed
-            csv_data = readmatrix('cokrigingdata.txt');
-            plot(csv_data(:,1),csv_data(:,2),'k:','LineWidth',2,'DisplayName','Forrester');
-        end
+        % if rho_fixed
+        %     csv_data = readmatrix('cokrigingdata.txt');
+        %     plot(csv_data(:,1),csv_data(:,2),'k:','LineWidth',2,'DisplayName','Forrester');
+        % end
         % Plot the cheap and expensive data sets
         scatter(Xc,Yc,'DisplayName','Data C','ColorVariable','b');
         hold on

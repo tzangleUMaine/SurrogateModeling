@@ -34,8 +34,10 @@ class CoKriging(mf_model.MFModel):
 
         # Set up the cokriging covariance matrix
         psi_ec, psi_ce = self.calculate_psi_matrix()
+        psic_e = self.calculate_pre_psi_matrix(self.x)
+        psic_e = np.exp(-self.kriging_lf.theta*psic_e)
 
-        self.C, self.inv_C = self.calculate_covariance(psi_ce,psi_ec,self.kriging_hf.psi)
+        self.C, self.inv_C = self.calculate_covariance(psi_ce,psi_ec,psic_e)
         
         # Assemble the combined y vector of cheap and expensive values
         self.yck = np.vstack((self.y_lf, self.y))
@@ -54,6 +56,15 @@ class CoKriging(mf_model.MFModel):
         for i in range(0,self.n):
             for j in range(0,self.n):
                 diffX = self.x[i,:] - self.x[j,:]
+                pre_psi_ij[i,j] = np.dot(diffX,diffX)
+        return pre_psi_ij
+    
+    def calculate_pre_psi_matrix(self,X):
+        n,d = np.shape(X)
+        pre_psi_ij = np.zeros((n,n),dtype=float)
+        for i in range(n):
+            for j in range(n):
+                diffX = X[i,:] - X[j,:]
                 pre_psi_ij[i,j] = np.dot(diffX,diffX)
         return pre_psi_ij
     
@@ -126,7 +137,10 @@ class CoKriging(mf_model.MFModel):
         val2 = self.kriging_diff.sigma*self.kriging_diff.psi
         C_mat[self.n_lf:n,self.n_lf:n] = self.kriging_diff.scale_factor**2 * self.kriging_lf.sigma * psic_e
         C_mat[self.n_lf:n,self.n_lf:n] += self.kriging_diff.sigma*self.kriging_diff.psi
-        C_mat.tofile("CMATOUT.txt"," ")
+        mat = np.matrix(C_mat)
+        with open('CMATOUT.txt','wb') as f:
+            for line in mat:
+                np.savetxt(f, line, fmt='%.2f')
         inv_C_mat = np.linalg.inv(C_mat)
         return C_mat,inv_C_mat
     

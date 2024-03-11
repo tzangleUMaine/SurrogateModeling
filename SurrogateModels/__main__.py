@@ -30,6 +30,6 @@ def main():
     model.kriging_lf.plot_model(x_vals,"Cokriging Model")
     model.kriging_diff.plot_model(x_vals,"Diff Model")
     plt.show()
-
+    dumbstop = True
 if __name__ == "__main__":
     main()
