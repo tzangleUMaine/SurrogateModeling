@@ -74,9 +74,9 @@ class Kriging(model.Model):
         return np.sum(y_pred)+self.mu
 
 class DiffKriging(Kriging):    
-    def __init__(self,x_mat,yh, yl):
+    def __init__(self,x_mat,yh, yl,scale_fixed = False):
         #Debugging fun for checking stability
-        self.scale_fixed = True
+        self.scale_fixed = scale_fixed
 
         self.x = x_mat
 

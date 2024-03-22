@@ -5,7 +5,7 @@ import mf_model
 import kriging
 
 class CoKriging(mf_model.MFModel):
-    def __init__(self,x_lf,y_lf,x_hf,y_hf):
+    def __init__(self,x_lf,y_lf,x_hf,y_hf,scale_fixed = False):
 
         # Init the multifidelity model data
         super().__init__(x_lf,y_lf,x_hf,y_hf)
@@ -26,10 +26,10 @@ class CoKriging(mf_model.MFModel):
 
         # Set up kriging model of the difference between the low and
         # high fidelity data set
-        self.kriging_diff = kriging.DiffKriging(self.x,self.y,y_lf_hat)
+        self.kriging_diff = kriging.DiffKriging(self.x,self.y,y_lf_hat,scale_fixed)
 
         # Find a kriging model for the high fidelity data set
-        # This is not completely necessary, only psi is used from this model
+        # This is not completely necessary, may be removed later for efficiency
         self.kriging_hf = kriging.Kriging(self.x,self.y)
 
         # Set up the cokriging covariance matrix
