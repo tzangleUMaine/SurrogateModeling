@@ -4,12 +4,13 @@ import model
 import scipy.optimize
 
 class Kriging(model.Model):
-    def __init__(self,x_mat,y_vec):
-        # Expects input values of:
+    def __init__(self,x_mat,y_vec,nugget=0.0):
 
         super().__init__(x_mat,y_vec)
 
         #self.plot_data()
+
+        self.nugget = nugget
 
         self.n, self.d = np.shape(self.x)
 
@@ -54,9 +55,11 @@ class Kriging(model.Model):
         return b
 
     def calculate_psi_matrix(self, theta):
-        psi_ij = np.exp(-theta * self.pre_psi)
-        inv_psi_ij = np.linalg.inv(psi_ij)
-        return psi_ij,inv_psi_ij
+        psi = np.exp(-theta * self.pre_psi)
+        if(self.nugget):
+            psi = psi + np.ones((self.n,self.n))*(self.nugget)
+        inv_psi = np.linalg.inv(psi)
+        return psi, inv_psi
 
     def calculate_mle(self,theta):
         psi,inv_psi = self.calculate_psi_matrix(theta)
@@ -74,7 +77,7 @@ class Kriging(model.Model):
         return np.sum(y_pred)+self.mu
 
 class DiffKriging(Kriging):    
-    def __init__(self,x_mat,yh, yl,scale_fixed = False):
+    def __init__(self,x_mat,yh, yl,scale_fixed = False, nugget = 0.0):
         #Debugging fun for checking stability
         self.scale_fixed = scale_fixed
 
@@ -82,6 +85,8 @@ class DiffKriging(Kriging):
 
         # Store the size of the inputs
         self.n, self.d = np.shape(self.x)
+
+        self.nugget = nugget
 
         # Initialize hyperparameters
         self.scale_factor = 1.0
