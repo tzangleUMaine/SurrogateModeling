@@ -22,7 +22,7 @@ class MFModel(model.Model):
                     label = label_lf, marker = marker_lf)
         plt.legend()
         plt.xlabel("x")
-        plt.ylabel("y")
+        plt.ylabel("y(x)")
 
     def plot_model(self,x_vals,name="Model",color="black",
                    label = "model", linestyle='solid'):
@@ -34,4 +34,4 @@ class MFModel(model.Model):
         plt.plot(x_vals, y_hat, color = color, label = label,linestyle=linestyle)
         plt.legend()
         plt.xlabel("x")
-        plt.ylabel("y")
+        plt.ylabel("y(x)")

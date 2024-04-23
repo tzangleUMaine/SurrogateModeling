@@ -6,19 +6,19 @@ import mfs_functions
 def main():
     # Start with a synthetic dataset
     rng = np.random.RandomState(0)
-    fxn_ind = 5
+    fxn_ind = 1
     dim,xmin,xmax=mfs_functions.function_bounds(fxn_ind)
 
-    n_lf = 11
+    n_lf = 30
     n_hf = 4
 
     x_lf = np.zeros((n_lf,dim), dtype=float)
     x_hf = np.zeros((n_hf,dim), dtype=float)
 
     # Generate the analytical functions
-    fxn_ind = 1
-    hf_fxn = mfs_functions.expensive_fxn(1)
-    lf_fxn = mfs_functions.cheap_fxn(1)
+    fxn_ind = 4
+    hf_fxn = mfs_functions.expensive_fxn(fxn_ind)
+    lf_fxn = mfs_functions.cheap_fxn(fxn_ind)
 
 
     x_lf[:,0] = np.linspace(xmin,xmax,n_lf)
@@ -28,7 +28,7 @@ def main():
     model = cokriging.CoKriging(x_lf,y_lf,x_hf,y_hf)
     
     x_vals = np.ones((300,1))
-    x_vals[:,0] = np.linspace(0,1,300)
+    x_vals[:,0] = np.linspace(xmin,xmax,300)
 
     #plot the model information
     plot_name = "Analytical Models"    
@@ -47,7 +47,8 @@ def main():
                         label = "HF Kriging", linestyle='dotted')
     model.kriging_lf.plot_model(x_vals, name=plot_name, color="black",
                         label = "LF Kriging", linestyle='dashed')
-    plt.show()
-    
+    #plt.show()
+    error = model.rms_error(hf_fxn,x_vals)
+    print(error)
 if __name__ == "__main__":
     main()

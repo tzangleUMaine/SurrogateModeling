@@ -9,6 +9,7 @@ t.manual_seed(17)
 ## Doing it the Pytorch way without using our custom feature extraction
 DEVICE='cpu'
 DTYPE=t.float32
+import numpy as np
 import torch
 import torch.nn
 import torch.optim
@@ -26,9 +27,6 @@ torch.manual_seed(17)
 # TODO:
 # Plan is for the dataset here to be replaced with analytical functions
 # Found easy nparray -> pytorch tensor methods while searching for how to use tensors
-
-class FunctionDataSet(torch.utils.data.Dataset):
-    def __init__(self,)
 
 # Getting the dataset, the Pytorch way
 all_training_data = torchvision.datasets.MNIST(
@@ -48,33 +46,43 @@ test_data = torchvision.datasets.MNIST(
 # TODO:
 # Validation data won't be needed in my implementation
 training_data, validation_data = torch.utils.data.random_split(all_training_data, [0.9, 0.1])
-# fxn_ind = 1
-# hf_fxn = mfs_functions.expensive_fxn(1)
-# lf_fxn = mfs_functions.cheap_fxn(1)
+fxn_ind = 1
+hf_fxn = mfs_functions.expensive_fxn(1)
+lf_fxn = mfs_functions.cheap_fxn(1)
 
+X_lf = np.array([0,0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9,1.0])
+y_lf = lf_fxn.evaluate(X_lf)
+
+X_lf = torch.tensor(X_lf, dtype=torch.float64)
+y_lf = torch.tensor(y_lf, dtype=torch.float64)
+
+X_check = np.linspace(0,1.0,300,endpoint=True)
+y_check = lf_fxn.evaluate(X_check)
+X_check = torch.tensor(X_check, dtype=torch.float64)
+y_check = torch.tensor(y_check, dtype=torch.float64)
 
 # training_data = mfs_functions
 
 # Hyper parameters
 learning_rate = 1e-3 # controls how fast the 
-batch_size = 64
+batch_size = 11
 epochs = 5
 momentum = 0.9
 
-training_dataloader = DataLoader(training_data, shuffle=True, batch_size=batch_size)
-validation_dataloader = DataLoader(validation_data,  batch_size=batch_size)
-test_dataloader = DataLoader(test_data,  batch_size=batch_size)
+training_dataloader = DataLoader(list(zip(X_lf,y_lf)), shuffle=True, batch_size=batch_size)
+validation_dataloader = DataLoader(list(zip(X_check,y_check)),  batch_size=batch_size)
+#test_dataloader = DataLoader(test_data,  batch_size=batch_size)
 
 # TODO:
 # Define own loss function for mfsm loss from paper
-loss = torch.nn.CrossEntropyLoss()
+loss = torch.nn.MSELoss()
 
 # TODO:
 # Expand this network to use be able to take in number of layers and array of hidden layers sizes
 # Add activation function type to input
 # Generalize to allow for n-dimensional inputs
 class MLPNetwork(torch.nn.Module):
-    def __init__(self, hidden_size=10, nclasses=10, input_size=28*28):
+    def __init__(self, hidden_size=10, nclasses=1, input_size=11):
         super().__init__()
         self._layers = torch.nn.ModuleList([torch.nn.Flatten(),
             tnn.Linear(input_size, hidden_size),
@@ -91,7 +99,7 @@ class MLPNetwork(torch.nn.Module):
 model = MLPNetwork()
 
 # Define optimizer
-optimizer = torch.optim.SGD(model.parameters(), lr=learning_rate, momentum=momentum)
+optimizer = torch.optim.Adam(model.parameters(), lr=0.0001)
 
 # TODO
 # Either embrace and figure out cuda or remove it from this method
@@ -144,7 +152,7 @@ def train(model, loss, training_dataloader, validation_dataloader, device=DEVICE
         
 trained_model, train_losses, valid_losses = train(model, loss, training_dataloader, validation_dataloader)
 
-test_loss, correct = loss_and_accuracy(model, loss, test_dataloader)
+test_loss, correct = loss_and_accuracy(model, loss, validation_dataloader)
 print(f"Test Error: \n Accuracy: {(100*correct):>0.1f}%, Avg loss: {test_loss:>8f} \n")
 
 # Define optimizer
@@ -198,14 +206,14 @@ def train(model, loss, training_dataloader, validation_dataloader, device=DEVICE
         
 trained_model, train_losses, valid_losses = train(model, loss, training_dataloader, validation_dataloader)
 
-test_loss, correct = loss_and_accuracy(model, loss, test_dataloader)
+test_loss, correct = loss_and_accuracy(model, loss, validation_dataloader)
 print(f"Test Error: \n Accuracy: {(100*correct):>0.1f}%, Avg loss: {test_loss:>8f} \n")
 
 torch.nn.__file__
 
-X, _ = next(iter(test_dataloader))
+X, _ = next(iter(validation_dataloader))
 X.shape
 
-plt.imshow(X[0, 0])
+#plt.imshow(X[0, 0])
 
-print("The predicted image label is ", model(X.to(DEVICE)).argmax(dim=-1)[0].item())
+print("The value ", model(X.to(DEVICE)).argmax(dim=-1)[0].item())
