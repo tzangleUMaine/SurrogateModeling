@@ -1,6 +1,8 @@
 import torch as t
 import torch.nn as tnn
 import matplotlib.pyplot as plt
+import torch.utils
+import torch.utils.data
 
 t.manual_seed(17)
 
@@ -24,6 +26,9 @@ torch.manual_seed(17)
 # TODO:
 # Plan is for the dataset here to be replaced with analytical functions
 # Found easy nparray -> pytorch tensor methods while searching for how to use tensors
+
+class FunctionDataSet(torch.utils.data.Dataset):
+    def __init__(self,)
 
 # Getting the dataset, the Pytorch way
 all_training_data = torchvision.datasets.MNIST(
