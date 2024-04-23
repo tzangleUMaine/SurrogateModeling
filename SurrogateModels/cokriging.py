@@ -14,7 +14,7 @@ class CoKriging(mf_model.MFModel):
         self.n_hf, self.d = np.shape(self.x)
         self.n_lf, __ = np.shape(self.x_lf)
         self.n = self.n_lf + self.n_hf
-
+        
         # Set up the low fidelity kriging model
         self.kriging_lf = kriging.Kriging(self.x_lf,self.y_lf)
 
