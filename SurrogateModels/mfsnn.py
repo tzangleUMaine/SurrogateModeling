@@ -18,6 +18,7 @@ from torchvision.transforms import ToTensor
 from torch.utils.data import DataLoader
 
 import mfs_functions
+import model
 
 torch.manual_seed(17)
 
@@ -25,195 +26,128 @@ torch.manual_seed(17)
 # Classes will be called by notebooks to show numerical experiments
 
 # TODO:
-# Plan is for the dataset here to be replaced with analytical functions
-# Found easy nparray -> pytorch tensor methods while searching for how to use tensors
-
-# Getting the dataset, the Pytorch way
-all_training_data = torchvision.datasets.MNIST(
-    root="data",
-    train=True,
-    download=True,
-    transform=ToTensor()
-)
-
-test_data = torchvision.datasets.MNIST(
-    root="data",
-    train=False,
-    download=True,
-    transform=ToTensor()
-)
-
-# TODO:
-# Validation data won't be needed in my implementation
-training_data, validation_data = torch.utils.data.random_split(all_training_data, [0.9, 0.1])
+# Move this stuff over to jupyter notebook
+# This section sets up the multifidelity functions for mapping
+# Samples are taken for the low fidelity function regression
+# A comparison is generated with the function for an error measurement
 fxn_ind = 1
 hf_fxn = mfs_functions.expensive_fxn(1)
 lf_fxn = mfs_functions.cheap_fxn(1)
 
-X_lf = np.array([0,0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9,1.0])
+X_lf = np.zeros([30,1])
+X_lf[:,0] = np.linspace(0.0,1.0,30,endpoint=True)
 y_lf = lf_fxn.evaluate(X_lf)
+X_lf = torch.tensor(X_lf, dtype=torch.float32)
+y_lf = torch.tensor(y_lf, dtype=torch.float32)
 
-X_lf = torch.tensor(X_lf, dtype=torch.float64)
-y_lf = torch.tensor(y_lf, dtype=torch.float64)
-
-X_check = np.linspace(0,1.0,300,endpoint=True)
+X_check = np.zeros([300,1])
+X_check[:,0] = np.linspace(0,1.0,300,endpoint=True)
 y_check = lf_fxn.evaluate(X_check)
-X_check = torch.tensor(X_check, dtype=torch.float64)
-y_check = torch.tensor(y_check, dtype=torch.float64)
-
+X_check = torch.tensor(X_check, dtype=torch.float32)
+y_check = torch.tensor(y_check, dtype=torch.float32)
 # training_data = mfs_functions
 
-# Hyper parameters
-learning_rate = 1e-3 # controls how fast the 
-batch_size = 11
-epochs = 5
-momentum = 0.9
 
-training_dataloader = DataLoader(list(zip(X_lf,y_lf)), shuffle=True, batch_size=batch_size)
-validation_dataloader = DataLoader(list(zip(X_check,y_check)),  batch_size=batch_size)
+
 #test_dataloader = DataLoader(test_data,  batch_size=batch_size)
-
-# TODO:
-# Define own loss function for mfsm loss from paper
-loss = torch.nn.MSELoss()
 
 # TODO:
 # Expand this network to use be able to take in number of layers and array of hidden layers sizes
 # Add activation function type to input
 # Generalize to allow for n-dimensional inputs
-class MLPNetwork(torch.nn.Module):
-    def __init__(self, hidden_size=10, nclasses=1, input_size=11):
-        super().__init__()
-        self._layers = torch.nn.ModuleList([torch.nn.Flatten(),
-            tnn.Linear(input_size, hidden_size),
-            tnn.ReLU(),
-            tnn.Linear(hidden_size, nclasses)])
+class MLPNetwork(torch.nn.Module,model.Model):
+    def __init__(self, X, y, X_valid, y_valid, hidden_layer_size=[10,8], activation=tnn.Tanh(), loss = torch.nn.MSELoss()):
+        torch.nn.Module.__init__(self)
+        model.Model.__init__(self,X,y)
+
+        # Hyper parameters
+        batch_size = 30
+        self.epochs = 2000        
+
+        # Set loss function
+        self.loss = loss
+
+        # Store the model data
+        self.training_dataloader = DataLoader(list(zip(X_lf,y_lf)), shuffle=True,batch_size=batch_size)
+        self.validation_dataloader = DataLoader(list(zip(X_check,y_check)), batch_size=batch_size)
+
+        # Setup network shape
+        __, input_size = X.shape
+        __, output_size = y.shape
+        self._layers = torch.nn.ModuleList([
+            tnn.Linear(input_size,hidden_layer_size[0]),
+            activation])
+        prev_size = hidden_layer_size[0]
+
+        for layer_size in hidden_layer_size[1:-1]:
+            self.layers.append(
+                tnn.Linear(prev_size,layer_size)
+            )
+            self._layers.append(activation)
+            prev_size = layer_size
+        self._layers.append(tnn.Linear(prev_size,output_size))
+
+        self.optimizer = torch.optim.Adam(self.parameters(), lr=0.0001)
+        
     def forward(self, x):
         for l in self._layers:
             xnext = l(x) # call the layers in sequence
             x = xnext
         return x
     
+    def loss_and_accuracy(self, device=DEVICE):
+        # Validation loop
+        validation_size = len(self.validation_dataloader.dataset)
+        error = 0
+
+        with torch.no_grad():
+            for X, y in self.validation_dataloader:
+                X = X.to(device)
+                y = y.to(device)
+                pred = self.evaluate(X)
+                error = loss(pred, y)
+
+        error /= validation_size
+        return error
+    
+    def train(self, device=DEVICE):
+        self.to(device)
+        error_history = []
+        for t in range(self.epochs):
+            # Train loop
+            training_size = len(self.training_dataloader.dataset)
+            for batch, (X, y) in enumerate(self.training_dataloader):
+                X = X.to(device)
+                y = y.to(device)
+                # Compute prediction and loss
+                pred = self.evaluate(X)
+                loss_t = self.loss(pred, y)
+
+                # Backpropagation
+                self.optimizer.zero_grad()
+                loss_t.backward()
+                self.optimizer.step()
+
+            error = self.loss_and_accuracy()
+            print(f"Validation Error: {error} \n")
+            error_history.append(error)
+
+        return error_history
+
+    def evaluate(self,x_in):
+        return self(x_in)
+    
 # TODO:    
 # Move this to a main file
-model = MLPNetwork()
+loss = torch.nn.MSELoss()
+lf_model = MLPNetwork(X_lf,y_lf,X_check,y_check,[10,8])
+error_history = lf_model.train()
 
-# Define optimizer
-optimizer = torch.optim.Adam(model.parameters(), lr=0.0001)
+# Plot the results
+lf_model.plot_data("LF Model", label = "Data")
+lf_model.plot_model(X_check,"LF Model", color = "blue", label="Model")
+plt.show()
 
-# TODO
-# Either embrace and figure out cuda or remove it from this method
-# Current issues are due to CUDA not being enabled
-def loss_and_accuracy(model, loss, validation_dataloader, device=DEVICE):
-    # Validation loop
-    validation_size = len(validation_dataloader.dataset)
-    num_batches = len(validation_dataloader)
-    test_loss, correct = 0, 0
+error = lf_model.loss_and_accuracy()
+print(f"Test Error: {error} \n")
 
-    with torch.no_grad():
-        for X, y in validation_dataloader:
-            X = X.to(device)
-            y = y.to(device)
-            pred = model(X)
-            test_loss += loss(pred, y).item()
-            correct += (pred.argmax(dim=-1) == y).type(DTYPE).sum().item()
-
-    test_loss /= num_batches
-    correct /= validation_size
-    return test_loss, correct
-    
-def train(model, loss, training_dataloader, validation_dataloader, device=DEVICE):
-    model.to(device)
-    train_losses = []
-    valid_losses = []
-    for t in range(epochs):
-        # Train loop
-        training_size = len(training_dataloader.dataset)
-        for batch, (X, y) in enumerate(training_dataloader):
-            X = X.to(device)
-            y = y.to(device)
-            # Compute prediction and loss
-            pred = model(X)
-            loss_t = loss(pred, y)
-
-            # Backpropagation
-            optimizer.zero_grad()
-            loss_t.backward()
-            optimizer.step()
-
-            if batch % 100 == 0:
-                loss_t, current = loss_t.item(), (batch + 1) * len(X)
-                print(f"loss: {loss_t:>7f}  [{current:>5d}/{training_size:>5d}]", end="\r")
-                train_losses.append(loss_t)
-                valid_loss, correct = loss_and_accuracy(model, loss, validation_dataloader, device=device)
-                valid_losses.append(valid_loss)
-                print(f"Validation Error: \n Accuracy: {(100*correct):>0.1f}%, Avg loss: {valid_loss:>8f} \n")
-    return model, train_losses, valid_losses
-        
-trained_model, train_losses, valid_losses = train(model, loss, training_dataloader, validation_dataloader)
-
-test_loss, correct = loss_and_accuracy(model, loss, validation_dataloader)
-print(f"Test Error: \n Accuracy: {(100*correct):>0.1f}%, Avg loss: {test_loss:>8f} \n")
-
-# Define optimizer
-optimizer = torch.optim.SGD(model.parameters(), lr=learning_rate, momentum=momentum)
-
-def loss_and_accuracy(model, loss, validation_dataloader, device=DEVICE):
-    # Validation loop
-    validation_size = len(validation_dataloader.dataset)
-    num_batches = len(validation_dataloader)
-    test_loss, correct = 0, 0
-
-    with torch.no_grad():
-        for X, y in validation_dataloader:
-            X = X.to(device)
-            y = y.to(device)
-            pred = model(X)
-            test_loss += loss(pred, y).item()
-            correct += (pred.argmax(dim=-1) == y).type(DTYPE).sum().item()
-
-    test_loss /= num_batches
-    correct /= validation_size
-    return test_loss, correct
-    
-def train(model, loss, training_dataloader, validation_dataloader, device=DEVICE):
-    model.to(device)
-    train_losses = []
-    valid_losses = []
-    for t in range(epochs):
-        # Train loop
-        training_size = len(training_dataloader.dataset)
-        for batch, (X, y) in enumerate(training_dataloader):
-            X = X.to(device)
-            y = y.to(device)
-            # Compute prediction and loss
-            pred = model(X)
-            loss_t = loss(pred, y)
-
-            # Backpropagation
-            optimizer.zero_grad()
-            loss_t.backward()
-            optimizer.step()
-
-            if batch % 100 == 0:
-                loss_t, current = loss_t.item(), (batch + 1) * len(X)
-                print(f"loss: {loss_t:>7f}  [{current:>5d}/{training_size:>5d}]", end="\r")
-                train_losses.append(loss_t)
-                valid_loss, correct = loss_and_accuracy(model, loss, validation_dataloader, device=device)
-                valid_losses.append(valid_loss)
-                print(f"Validation Error: \n Accuracy: {(100*correct):>0.1f}%, Avg loss: {valid_loss:>8f} \n")
-    return model, train_losses, valid_losses
-        
-trained_model, train_losses, valid_losses = train(model, loss, training_dataloader, validation_dataloader)
-
-test_loss, correct = loss_and_accuracy(model, loss, validation_dataloader)
-print(f"Test Error: \n Accuracy: {(100*correct):>0.1f}%, Avg loss: {test_loss:>8f} \n")
-
-torch.nn.__file__
-
-X, _ = next(iter(validation_dataloader))
-X.shape
-
-#plt.imshow(X[0, 0])
-
-print("The value ", model(X.to(DEVICE)).argmax(dim=-1)[0].item())
