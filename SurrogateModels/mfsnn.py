@@ -16,6 +16,7 @@ import torch.optim
 from torch.utils.data import DataLoader
 
 import mfs_functions
+import mf_model
 import model
 
 # These methods will be reused in later works so I plan to do development in python files
@@ -23,9 +24,29 @@ import model
 
 
 # Class for a linear network of variable shape for regression purposes
-class MLPNetwork(torch.nn.Module):
-    def __init__(self, input_size, output_size, hidden_layer_size = [10,8], activation = tnn.Tanh()):
-        super().__init__()
+class MLPNetwork(torch.nn.Module, model.Model):
+    def __init__(self, X, y, X_valid, y_valid, hidden_layer_size = [10,8], activation = tnn.Tanh(), loss = torch.nn.MSELoss()):
+        torch.nn.Module.__init__(self)
+        model.Model.__init__(self,X,y)
+
+        # Hyper parameters
+        batch_size = 30
+        self.epochs = 500        
+
+        # Report rate
+        self.report_steps = 50
+
+        # Set loss function
+        self.loss = loss
+
+        # Store the model data
+        self.training_dataloader = DataLoader(list(zip(X,y)), shuffle=True, batch_size=batch_size)
+        self.validation_dataloader = DataLoader(list(zip(X_valid,y_valid)), batch_size=batch_size)
+
+        # Generate the neural network
+        __, input_size = X.shape
+        __, output_size = y.shape
+        #self.mlp_network = MLPNetwork(input_size, output_size, hidden_layer_size, activation)
 
         # Setup network shape
         self._layers = torch.nn.ModuleList([
@@ -41,40 +62,8 @@ class MLPNetwork(torch.nn.Module):
             prev_size = layer_size
         self._layers.append(tnn.Linear(prev_size,output_size))
 
-    def forward(self, x):
-        for l in self._layers:
-            xnext = l(x) # call the layers in sequence
-            x = xnext
-        return x
-
-# Low Fidelity NN class is used in MFS setup as the initial regression solution.
-# Outside of this context it is simply a multi-layer NN for regression.
-# Inherites model.Model within this project to access nice plotting features
-class LowFidelityNN(model.Model):
-    def __init__(self, X, y, X_valid, y_valid, hidden_layer_size=[10,8], activation=tnn.Tanh(), loss = torch.nn.MSELoss()):
-        model.Model.__init__(self,X,y)
-
-        # Hyper parameters
-        batch_size = 30
-        self.epochs = 500        
-
-        # Report rate
-        self.report_steps = 50
-
-        # Set loss function
-        self.loss = loss
-
-        # Store the model data
-        self.training_dataloader = DataLoader(list(zip(X,y)), shuffle=True,batch_size=batch_size)
-        self.validation_dataloader = DataLoader(list(zip(X_valid,y_valid)), batch_size=batch_size)
-
-        # Generate the neural network
-        __, input_size = X.shape
-        __, output_size = y.shape
-        self.mlp_network = MLPNetwork(input_size, output_size, hidden_layer_size, activation)
-
         # Set the optimizer
-        self.optimizer = torch.optim.Adam(self.mlp_network.parameters(), lr=0.05)
+        self.optimizer = torch.optim.Adam(self.parameters(), lr=0.05)
 
         self.training_error, self.validation_error = self.train()        
    
@@ -107,7 +96,7 @@ class LowFidelityNN(model.Model):
     
     # Train uses backpropogation to solve for the model parameters
     def train(self, device=DEVICE):
-        self.mlp_network.to(device)
+        self.to(device)
         train_error_history = []
         validation_error_history = []
         for t in range(self.epochs):
@@ -138,7 +127,7 @@ class LowFidelityNN(model.Model):
 
     # Evaluate function defines method for use in generic model class
     def evaluate(self,x_in):
-        return self.mlp_network(x_in)
+        return self.__forward(x_in)
     
     # Plots errors output from training to show path to parameters
     def plot_error(self):
@@ -151,6 +140,59 @@ class LowFidelityNN(model.Model):
         plt.xlabel("Epoch")
         plt.ylabel("Error")
         plt.show()
+
+
+    def __forward(self, x):
+        for l in self._layers:
+            xnext = l(x) # call the layers in sequence
+            x = xnext
+        return x
+
+# Low Fidelity NN class is used in MFS setup as the initial regression solution.
+# Outside of this context it is simply a multi-layer NN for regression.
+# Inherits model.Model within this project to access nice plotting features
+class LowFidelityNN(model.Model):
+    def __init__(self, X, y, X_valid, y_valid, hidden_layer_size=[10,8], activation=tnn.Tanh(), loss = torch.nn.MSELoss()):
+        model.Model.__init__(self,X,y)
+
+        # Hyper parameters
+        batch_size = 30
+        self.epochs = 500        
+
+        # Report rate
+        self.report_steps = 50
+
+        # Set loss function
+        self.loss = loss
+
+        # Store the model data
+        self.training_dataloader = DataLoader(list(zip(X,y)), shuffle=True,batch_size=batch_size)
+        self.validation_dataloader = DataLoader(list(zip(X_valid,y_valid)), batch_size=batch_size)
+
+        # Generate the neural network
+        __, input_size = X.shape
+        __, output_size = y.shape
+        self.mlp_network = MLPNetwork(input_size, output_size, hidden_layer_size, activation)
+
+        # Set the optimizer
+        self.optimizer = torch.optim.Adam(self.mlp_network.parameters(), lr=0.05)
+
+        self.training_error, self.validation_error = self.train()        
+   
+
+
+# Multifidelity Neural Network
+# Setup based on Meng and Karniadakis 2020 paper
+# Uses 3 neural networks combined
+# A low fidelity NN and a linear and non-linear HF NN
+# All nn dimensions are given as the size of the hidden layers.
+# Input and output size are given by the x and y data
+class MultiFidelityNN(mf_model.MFModel):
+    def __init__(self, x_lf, y_lf, x_hf, y_hf, lf_nn_dim, hf_linear_nn_dim, hf_nl_nn_dim):
+        super().__init__(x_lf, y_lf, x_hf, y_hf)
+        
+
+
 
 # Function used for testing LowFidelity NN capabilities
 # further showcase of class can be found in MFSNN.ipynb
@@ -171,7 +213,7 @@ def TestFunction():
     X_check = torch.tensor(X_check, dtype=torch.float32)
     y_check = torch.tensor(y_check, dtype=torch.float32)
     loss = torch.nn.MSELoss()
-    lf_model = LowFidelityNN(X_lf,y_lf,X_check,y_check,[10,10,10])
+    lf_model = MLPNetwork(X_lf,y_lf,X_check,y_check,[10,10,10])
     #error_history = lf_model.train()
 
     # Plot the results
@@ -180,3 +222,5 @@ def TestFunction():
     plt.show()
 
     lf_model.plot_error()
+
+TestFunction()
