@@ -22,7 +22,6 @@ class MLPNetwork(t.nn.Module, model.Model):
         model.Model.__init__(self,X,y)
 
         # Hyper parameters
-        batch_size = 30
         self.epochs = 500        
 
         # Report rate
@@ -32,7 +31,7 @@ class MLPNetwork(t.nn.Module, model.Model):
         self.loss = loss
 
         # Store the model data
-        self.training_dataloader = DataLoader(list(zip(X,y)), shuffle=True, batch_size=batch_size)
+        self.training_dataloader = DataLoader(list(zip(X,y)), shuffle=True, batch_size=30)
 
         # Generate the neural network
         __, input_size = X.shape
@@ -56,14 +55,13 @@ class MLPNetwork(t.nn.Module, model.Model):
         # Set the optimizer
         self.optimizer = t.optim.Adam(self.parameters(), lr=0.05)
 
-        self.training_error, self.validation_error = self.train()        
+        self.training_error = self.train()        
    
     # Calculates the training error using the given loss function
     def training_accuracy(self, device=DEVICE):
         # Validation loop
         training_size = len(self.training_dataloader.dataset)
         train_error = 0
-        validation_error = 0
 
         with t.no_grad():
             for X, y in self.training_dataloader:
@@ -96,11 +94,9 @@ class MLPNetwork(t.nn.Module, model.Model):
     def train(self, device=DEVICE):
         self.to(device)
         train_error_history = []
-        validation_error_history = []
         for t in range(self.epochs):
             # Train loop
-            training_size = len(self.training_dataloader.dataset)
-            for batch, (X, y) in enumerate(self.training_dataloader):
+            for X, y in self.training_dataloader:
                 X = X.to(device)
                 y = y.to(device)
                 # Compute prediction and loss
@@ -112,16 +108,14 @@ class MLPNetwork(t.nn.Module, model.Model):
                 loss_t.backward()
                 self.optimizer.step()
 
-            train_error, validation_error = self.loss_and_accuracy()
+            train_error = self.training_accuracy()
             if t%self.report_steps==0:
                 print(f"----Progress Update----")
                 print(f"Epoch: {t} \n")
                 print(f"Training Error: {train_error} \n")
-                print(f"Validation Error: {validation_error} \n")
             train_error_history.append(train_error)
-            validation_error_history.append(validation_error)
 
-        return train_error_history, validation_error_history
+        return train_error_history
 
     # Evaluate function defines method for use in generic model class
     def evaluate(self,x_in):
@@ -133,7 +127,6 @@ class MLPNetwork(t.nn.Module, model.Model):
         plt.figure("Model Error")
         plt.title("Model Error")
         plt.plot(epoch_number, self.training_error, color = "blue", label = "Training", linestyle = "-")        
-        plt.plot(epoch_number, self.validation_error, color = "black", label = "Validation", linestyle = "--")
         plt.legend()
         plt.xlabel("Epoch")
         plt.ylabel("Error")
@@ -190,7 +183,7 @@ def TestFunctionMLP():
     X_check = t.tensor(X_check, dtype=t.float32)
     y_check = t.tensor(y_check, dtype=t.float32)
     loss = t.nn.MSELoss()
-    lf_model = MLPNetwork(X_lf,y_lf,X_check,y_check,[10,10,10])
+    lf_model = MLPNetwork(X_lf,y_lf,hidden_layer_size=[10,10,10],loss=loss)
     #error_history = lf_model.train()
 
     # Plot the results
@@ -211,6 +204,5 @@ def TestFunctionMFSNN():
     X_lf = t.tensor(X_lf, dtype=t.float32)
     y_lf = t.tensor(y_lf, dtype=t.float32)
 
-x = np.r_[1:15:1]
-y = np.r_[8:23:1]
-print(x)
+TestFunctionMLP()
+
