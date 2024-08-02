@@ -22,7 +22,7 @@ class MLPNetwork(t.nn.Module, model.Model):
         model.Model.__init__(self,X,y)
 
         # Hyper parameters
-        self.epochs = 500        
+        self.epochs = 1000        
 
         # Report rate
         self.report_steps = 50
@@ -31,7 +31,7 @@ class MLPNetwork(t.nn.Module, model.Model):
         self.loss = loss
 
         # Store the model data
-        self.training_dataloader = DataLoader(list(zip(X,y)), shuffle=True, batch_size=30)
+        self.training_dataloader = DataLoader(list(zip(X,y)), shuffle=True, batch_size=5)
 
         # Generate the neural network
         __, input_size = X.shape
@@ -51,6 +51,9 @@ class MLPNetwork(t.nn.Module, model.Model):
             self._layers.append(activation)
             prev_size = layer_size
         self._layers.append(tnn.Linear(prev_size,output_size))
+      
+        # Apply initial weights
+        self.apply(self.init_weights)
 
         # Set the optimizer
         self.optimizer = t.optim.Adam(self.parameters(), lr=0.05)
@@ -74,6 +77,12 @@ class MLPNetwork(t.nn.Module, model.Model):
 
         return train_error
     
+    # Helper function to initialize weights
+    def init_weights(self, m):
+        if isinstance(m, tnn.Linear):
+            tnn.init.xavier_uniform(m.weight)
+            m.bias.data.fill_(0.01)
+
     def validation_accuracy(self, X_valid, y_valid, device=DEVICE):        
         
         valid_dataloader = DataLoader(list(zip(X_valid,y_valid)), shuffle=True)
@@ -99,6 +108,7 @@ class MLPNetwork(t.nn.Module, model.Model):
             for X, y in self.training_dataloader:
                 X = X.to(device)
                 y = y.to(device)
+                print(X)
                 # Compute prediction and loss
                 pred = self.evaluate(X)
                 loss_t = self.loss(pred, y)
@@ -154,14 +164,17 @@ class MultiFidelityNN(mf_model.MFModel):
         self.low_fidelity_nn = MLPNetwork(x_lf, y_lf,hidden_layer_size=lf_nn_dim,activation=tnn.ReLU())
 
         # Create lf approximations of the high fidelity data using the lf model
-        ylf_hat_xhf = self.low_fidelity_nn.evaluate(x_hf)
+        # for x in x_hf
+        #  = self.low_fidelity_nn.evaluate(x_hf)
         
         self.high_fidelity_nn = MLPNetwork(ylf_hat_xhf,y_hf,hidden_layer_size=hf_nl_nn_dim,activation=tnn.ReLU())
 
 
     def evaluate(self,x):
-        yhat = self.low_fidelity_nn.evaluate(x)
-        return yhat
+        yhat_lf = self.low_fidelity_nn.evaluate(x)
+        x_hf = t.cat((x,yhat_lf))
+        yhat_hf = self.high_fidelity_nn.evaluate(x_hf)
+        return yhat_hf
         
 
 # Function used for testing LowFidelity NN capabilities
@@ -183,7 +196,7 @@ def TestFunctionMLP():
     X_check = t.tensor(X_check, dtype=t.float32)
     y_check = t.tensor(y_check, dtype=t.float32)
     loss = t.nn.MSELoss()
-    lf_model = MLPNetwork(X_lf,y_lf,hidden_layer_size=[10,10,10],loss=loss)
+    lf_model = MLPNetwork(X_lf,y_lf,hidden_layer_size=[6,5],loss=loss)
     #error_history = lf_model.train()
 
     # Plot the results
@@ -203,6 +216,12 @@ def TestFunctionMFSNN():
     y_lf = lf_fxn.evaluate(X_lf)
     X_lf = t.tensor(X_lf, dtype=t.float32)
     y_lf = t.tensor(y_lf, dtype=t.float32)
+    
+    X_hf = np.zeros([30,1])
+    X_hf[:,0] = np.linspace(0.0,1.0,6,endpoint=True)
+    y_hf = lf_fxn.evaluate(X_hf)
+    X_hf = t.tensor(X_hf, dtype=t.float32)
+    y_hf = t.tensor(y_hf, dtype=t.float32)
 
 TestFunctionMLP()
 
