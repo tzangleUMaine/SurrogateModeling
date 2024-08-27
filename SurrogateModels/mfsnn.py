@@ -56,7 +56,8 @@ class MLPNetwork(t.nn.Module, model.Model):
         self.apply(self.init_weights)
 
         # Set the optimizer
-        self.optimizer = t.optim.Adam(self.parameters(), lr=0.05)
+        #self.optimizer = t.optim.Adam(self.parameters(), lr=0.05)
+        self.optimizer = t.optim.LBFGS(self.parameters(), lr = 1 )
 
         self.training_error = self.train()        
    
@@ -75,8 +76,10 @@ class MLPNetwork(t.nn.Module, model.Model):
 
         train_error /= training_size
 
-        return train_error
-    
+        return train_error   
+
+
+
     # Helper function to initialize weights
     def init_weights(self, m):
         if isinstance(m, tnn.Linear):
@@ -109,13 +112,22 @@ class MLPNetwork(t.nn.Module, model.Model):
                 X = X.to(device)
                 y = y.to(device)
                 # Compute prediction and loss
-                pred = self.evaluate(X)
-                loss_t = self.loss(pred, y)
+                # pred = self.evaluate(X)
+                # loss_t = self.loss(pred, y)
 
-                # Backpropagation
-                self.optimizer.zero_grad()
-                loss_t.backward()
-                self.optimizer.step()
+                # # Backpropagation
+                # self.optimizer.zero_grad()
+                # loss_t.backward()
+                def closure():
+                    self.optimizer.zero_grad()
+                    pred = self.evaluate(X)
+                    loss_t = self.loss(pred,y)
+                    # for p in self.parameters():
+                    #     loss_t += 0.01*(p**2).sum()
+                    loss_t.backward()
+                    return loss_t
+                
+                self.optimizer.step(closure)
 
             train_error = self.training_accuracy()
             if t%self.report_steps==0:
@@ -126,6 +138,32 @@ class MLPNetwork(t.nn.Module, model.Model):
 
         return train_error_history
 
+    # # Define a training iteration function to handle memory stuff for LBFGS
+    # def _training_iteration(self,device=DEVICE):
+    #     running_loss = 0.0
+    #     for i, (X,y) in enumerate(self.training_dataloader):
+    #         X = X.to(device)
+    #         y = y.to(device)
+
+    #         X_ = t.autograd.Variable(X, requires_grad=True)
+    #         y_ = t.autograd.Variable(y)
+            
+    #         def closure():
+    #             if t.is_grad_enabled():
+    #                 self.optimizer.zero_grad()
+    #             output = self.evaluate(X_)
+    #             loss_t = self.loss(output,y_)
+    #             if loss_t.requires_grad():
+    #                 loss_t.backward()
+    #             return loss_t
+    #         self.optimizer.step(closure)
+
+    #         # calculate the loss again for monitoring
+    #         output = self(X_)
+    #         loss = closure()
+    #         running_loss += loss.item()
+    #         return running_loss
+        
     # Evaluate function defines method for use in generic model class
     def evaluate(self,x_in):
         return self.__forward(x_in)
@@ -195,7 +233,7 @@ def TestFunctionMLP():
     X_check = t.tensor(X_check, dtype=t.float32)
     y_check = t.tensor(y_check, dtype=t.float32)
     loss = t.nn.MSELoss()
-    lf_model = MLPNetwork(X_lf,y_lf,hidden_layer_size=[6,5],loss=loss)
+    lf_model = MLPNetwork(X_lf,y_lf,hidden_layer_size=[20,20],loss=loss)
     #error_history = lf_model.train()
 
     # Plot the results
@@ -232,5 +270,5 @@ def TestFunctionMFSNN():
     mfnn_model.plot_model(X_check,"LF Model", color = "blue", label="Model")
     plt.show()
 
-TestFunctionMFSNN()
+TestFunctionMLP()
 
