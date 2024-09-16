@@ -56,8 +56,8 @@ class MLPNetwork(t.nn.Module, model.Model):
         self.apply(self.init_weights)
 
         # Set the optimizer
-        #self.optimizer = t.optim.Adam(self.parameters(), lr=0.05)
-        self.optimizer = t.optim.LBFGS(self.parameters(), lr = 1 )
+        self.optimizer = t.optim.Adam(self.parameters(), lr=0.05, weight_decay=0.001)
+        #self.optimizer = t.optim.LBFGS(self.parameters(), lr = 1 )
 
         self.training_error = self.train()        
    
