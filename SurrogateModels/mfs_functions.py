@@ -15,7 +15,8 @@ class expensive_fxn(model.Model):
         elif self.fxn_ind == 4:
             y_samp = np.cos(3.5*np.pi*Xin)*np.exp(-1.4*Xin)
         elif self.fxn_ind == 5:
-            y_samp = 4-2.1*Xin[:,1]^4+(1.0/3.0)*Xin[:,1]^6+Xin[:,1]*Xin[:,2]-4*Xin[:,2]**2+4.*Xin[:,2]**4
+            y_samp = np.zeros((Xin.shape[0],1))
+            y_samp[:,0] = 4-2.1*Xin[:,0]**4+(1.0/3.0)*Xin[:,0]**6+Xin[:,0]*Xin[:,1]-4*Xin[:,1]**2+4.*Xin[:,1]**4
         else:
             print('invalid function index')
         return y_samp
@@ -39,7 +40,8 @@ class cheap_fxn(model.Model):
         elif self.fxn_ind == 4:
             y_samp = np.cos(3.5*np.pi*Xin)*np.exp(-1.4*Xin) + 0.75*Xin**2
         elif self.fxn_ind == 5:
-            y_samp = 4-0.5*Xin[:,1]^4+(0.04)*Xin[:,1]**6+0.5*Xin[:,1]*Xin[:,2]-1.96*Xin[:,2]**2+0.96*Xin[:,2]**4
+            y_samp = np.zeros(Xin.shape()[0],1)
+            y_samp[:,0] = 4-0.5*Xin[:,0]**4+(0.04)*Xin[:,0]**6+0.5*Xin[:,0]*Xin[:,1]-1.96*Xin[:,1]**2+0.96*Xin[:,1]**4
         else:
             print('invalid function index')
         return y_samp
