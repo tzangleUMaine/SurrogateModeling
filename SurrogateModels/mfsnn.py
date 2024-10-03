@@ -31,7 +31,7 @@ class MLPNetwork(t.nn.Module, model.Model):
         self.loss = loss
 
         # Store the model data
-        self.training_dataloader = DataLoader(list(zip(X,y)), shuffle=True, batch_size=5)
+        self.training_dataloader = DataLoader(list(zip(X,y)), shuffle=True, batch_size=1)
 
         # Generate the neural network
         __, input_size = X.shape
@@ -48,7 +48,8 @@ class MLPNetwork(t.nn.Module, model.Model):
             self._layers.append(
                 tnn.Linear(prev_size,layer_size)
             )
-            self._layers.append(activation)
+            if activation != "none":
+                self._layers.append(activation)
             prev_size = layer_size
         self._layers.append(tnn.Linear(prev_size,output_size))
       
@@ -56,7 +57,7 @@ class MLPNetwork(t.nn.Module, model.Model):
         self.apply(self.init_weights)
 
         # Set the optimizer
-        self.optimizer = t.optim.Adam(self.parameters(), lr=0.05, weight_decay=0.001)
+        self.optimizer = t.optim.Adam(self.parameters(), lr=0.005, weight_decay=0.0001)
         #self.optimizer = t.optim.LBFGS(self.parameters(), lr = 1 )
 
         self.training_error = self.train()        
@@ -111,23 +112,200 @@ class MLPNetwork(t.nn.Module, model.Model):
             for X, y in self.training_dataloader:
                 X = X.to(device)
                 y = y.to(device)
-                # Compute prediction and loss
-                # pred = self.evaluate(X)
-                # loss_t = self.loss(pred, y)
 
-                # # Backpropagation
-                # self.optimizer.zero_grad()
-                # loss_t.backward()
-                def closure():
-                    self.optimizer.zero_grad()
-                    pred = self.__forward(X)
-                    loss_t = self.loss(pred,y)
-                    # for p in self.parameters():
-                    #     loss_t += 0.01*(p**2).sum()
-                    loss_t.backward()
-                    return loss_t
+                #Compute prediction and loss
+                pred = self.__forward(X)
+                loss_t = self.loss(pred, y)
+
+                # Backpropagation
+                self.optimizer.zero_grad()
+                loss_t.backward()
+                # def closure():
+                #     self.optimizer.zero_grad()
+                #     pred = self.__forward(X)
+                #     loss_t = self.loss(pred,y)
+                #     # for p in self.parameters():
+                #     #     loss_t += 0.01*(p**2).sum()
+                #     loss_t.backward()
+                #     return loss_t
                 
-                self.optimizer.step(closure)
+                self.optimizer.step()
+
+            train_error = self.training_accuracy()
+            if t%self.report_steps==0:
+                print(f"----Progress Update----")
+                print(f"Epoch: {t} \n")
+                print(f"Training Error: {train_error} \n")
+            train_error_history.append(train_error)
+
+        return train_error_history
+
+    # # Define a training iteration function to handle memory stuff for LBFGS
+    # def _training_iteration(self,device=DEVICE):
+    #     running_loss = 0.0
+    #     for i, (X,y) in enumerate(self.training_dataloader):
+    #         X = X.to(device)
+    #         y = y.to(device)
+
+    #         X_ = t.autograd.Variable(X, requires_grad=True)
+    #         y_ = t.autograd.Variable(y)
+            
+    #         def closure():
+    #             if t.is_grad_enabled():
+    #                 self.optimizer.zero_grad()
+    #             output = self.evaluate(X_)
+    #             loss_t = self.loss(output,y_)
+    #             if loss_t.requires_grad():
+    #                 loss_t.backward()
+    #             return loss_t
+    #         self.optimizer.step(closure)
+
+    #         # calculate the loss again for monitoring
+    #         output = self(X_)
+    #         loss = closure()
+    #         running_loss += loss.item()
+    #         return running_loss
+        
+    # Evaluate function defines method for use in generic model class
+    def evaluate(self,x_in):
+        with t.no_grad():
+            return self.__forward(x_in)
+    
+    # Plots errors output from training to show path to parameters
+    def plot_error(self):
+        epoch_number = np.arange(0,self.epochs,1)
+        plt.figure("Model Error")
+        plt.title("Model Error")
+        plt.plot(epoch_number, self.training_error, color = "blue", label = "Training", linestyle = "-")        
+        plt.legend()
+        plt.xlabel("Epoch")
+        plt.ylabel("Error")
+        plt.show()
+
+
+    def __forward(self, x):
+        for l in self._layers:
+            xnext = l(x) # call the layers in sequence
+            x = xnext
+        return x
+
+# Composite Neural Network 
+# Explicitly seperates the network into a linear and non-linear network.
+# Fully connected NN architecture in both cases is concatenated at the final layer
+class CompositeNN(t.nn.Module, mf_model.MFModel):
+    def __init__(self, X, y, hidden_layer_size = [10,8], activation = tnn.Tanh(), loss = t.nn.MSELoss()):
+        t.nn.Module.__init__(self)
+        model.Model.__init__(self,X,y)
+
+        # Hyper parameters
+        self.epochs = 1000        
+
+        # Report rate
+        self.report_steps = 50
+
+        # Set loss function
+        self.loss = loss
+
+        # Store the model data
+        self.training_dataloader = DataLoader(list(zip(X,y)), shuffle=True, batch_size=1)
+
+        # Generate the neural network
+        __, input_size = X.shape
+        __, output_size = y.shape
+        #self.mlp_network = MLPNetwork(input_size, output_size, hidden_layer_size, activation)
+
+        # Setup network shape
+        self._layers = t.nn.ModuleList([
+            tnn.Linear(input_size, hidden_layer_size[0]),
+            activation])
+        prev_size = hidden_layer_size[0]
+
+        for layer_size in hidden_layer_size[1:-1]:
+            self._layers.append(
+                tnn.Linear(prev_size,layer_size)
+            )
+            if activation != "none":
+                self._layers.append(activation)
+            prev_size = layer_size
+        self._layers.append(tnn.Linear(prev_size,output_size))
+      
+        # Apply initial weights
+        self.apply(self.init_weights)
+
+        # Set the optimizer
+        self.optimizer = t.optim.Adam(self.parameters(), lr=0.005, weight_decay=0.0001)
+        #self.optimizer = t.optim.LBFGS(self.parameters(), lr = 1 )
+
+        self.training_error = self.train()        
+   
+    # Calculates the training error using the given loss function
+    def training_accuracy(self, device=DEVICE):
+        # Validation loop
+        training_size = len(self.training_dataloader.dataset)
+        train_error = 0
+
+        with t.no_grad():
+            for X, y in self.training_dataloader:
+                X = X.to(device)
+                y = y.to(device)
+                pred = self.evaluate(X)
+                train_error = self.loss(pred, y)
+
+        train_error /= training_size
+
+        return train_error   
+
+
+
+    # Helper function to initialize weights
+    def init_weights(self, m):
+        if isinstance(m, tnn.Linear):
+            tnn.init.xavier_uniform(m.weight)
+            m.bias.data.fill_(0.01)
+
+    def validation_accuracy(self, X_valid, y_valid, device=DEVICE):        
+        
+        valid_dataloader = DataLoader(list(zip(X_valid,y_valid)), shuffle=True)
+        validation_size = len(valid_dataloader.dataset)
+
+        # Validation Loop
+        with t.no_grad():
+            for X, y in self.valid_dataloader:
+                X = X.to(device)
+                y = y.to(device)
+                pred = self.evaluate(X)
+                validation_error = self.loss(pred, y)
+
+        validation_error /=validation_size
+        return validation_error
+
+    # Train uses backpropogation to solve for the model parameters
+    def train(self, device=DEVICE):
+        self.to(device)
+        train_error_history = []
+        for t in range(self.epochs):
+            # Train loop
+            for X, y in self.training_dataloader:
+                X = X.to(device)
+                y = y.to(device)
+
+                #Compute prediction and loss
+                pred = self.__forward(X)
+                loss_t = self.loss(pred, y)
+
+                # Backpropagation
+                self.optimizer.zero_grad()
+                loss_t.backward()
+                # def closure():
+                #     self.optimizer.zero_grad()
+                #     pred = self.__forward(X)
+                #     loss_t = self.loss(pred,y)
+                #     # for p in self.parameters():
+                #     #     loss_t += 0.01*(p**2).sum()
+                #     loss_t.backward()
+                #     return loss_t
+                
+                self.optimizer.step()
 
             train_error = self.training_accuracy()
             if t%self.report_steps==0:
@@ -200,13 +378,13 @@ class MultiFidelityNN(mf_model.MFModel):
 
         # Generate a NN model of the lf model data
         print(x_lf)
-        self.low_fidelity_nn = MLPNetwork(x_lf, y_lf,hidden_layer_size=lf_nn_dim,activation=tnn.ReLU())
+        self.low_fidelity_nn = MLPNetwork(x_lf, y_lf,hidden_layer_size=lf_nn_dim,activation=tnn.Tanh())
 
         # Create lf approximations of the high fidelity data using the lf model
         yhat_lf = self.low_fidelity_nn.evaluate(x_hf)
         x_hf_prime = t.cat((yhat_lf,x_hf),dim=1)
         
-        self.high_fidelity_nn = MLPNetwork(x_hf_prime,y_hf,hidden_layer_size=hf_nl_nn_dim,activation=tnn.ReLU())
+        self.high_fidelity_nn = MLPNetwork(x_hf_prime,y_hf,hidden_layer_size=hf_nl_nn_dim,activation=tnn.Linear())
 
 
     def evaluate(self,x):
@@ -267,7 +445,7 @@ def TestFunctionMFSNN():
     X_hf = t.tensor(X_hf, dtype=t.float32)
     y_hf = t.tensor(y_hf, dtype=t.float32)
 
-    mfnn_model = MultiFidelityNN(X_lf, y_lf, X_hf, y_hf, lf_nn_dim=[30,6], hf_linear_nn_dim=[6,4], hf_nl_nn_dim= [10,10])
+    mfnn_model = MultiFidelityNN(X_lf, y_lf, X_hf, y_hf, lf_nn_dim=[10,10,10], hf_linear_nn_dim=[6,4], hf_nl_nn_dim= [10,10,10])
 
     # Plot the results
     mfnn_model.plot_data("MF Model")
