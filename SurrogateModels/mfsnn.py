@@ -193,7 +193,7 @@ class MLPNetwork(t.nn.Module, model.Model):
 # Explicitly seperates the network into a linear and non-linear network.
 # Fully connected NN architecture in both cases is concatenated at the final layer
 class CompositeNN(t.nn.Module, mf_model.MFModel):
-    def __init__(self, X, y, hidden_layer_size = [10,8], activation = tnn.Tanh(), loss = t.nn.MSELoss()):
+    def __init__(self, X, y, layers_nl = [10,8], layers_linear = [10,10], activation_nl = tnn.Tanh(), loss = t.nn.MSELoss()):
         t.nn.Module.__init__(self)
         model.Model.__init__(self,X,y)
 
@@ -212,23 +212,33 @@ class CompositeNN(t.nn.Module, mf_model.MFModel):
         # Generate the neural network
         __, input_size = X.shape
         __, output_size = y.shape
-        #self.mlp_network = MLPNetwork(input_size, output_size, hidden_layer_size, activation)
 
-        # Setup network shape
-        self._layers = t.nn.ModuleList([
-            tnn.Linear(input_size, hidden_layer_size[0]),
-            activation])
-        prev_size = hidden_layer_size[0]
+        # Setup non-linear network shape
+        self._nl_layers = t.nn.ModuleList([
+            tnn.Linear(input_size, layers_nl[0]),
+            activation_nl])
+        prev_size = layers_nl[0]
 
-        for layer_size in hidden_layer_size[1:-1]:
-            self._layers.append(
+        for layer_size in layers_nl[1:-1]:
+            self._nl_layers.append(
                 tnn.Linear(prev_size,layer_size)
             )
-            if activation != "none":
-                self._layers.append(activation)
+            self._nl_layers.append(activation_nl)
             prev_size = layer_size
-        self._layers.append(tnn.Linear(prev_size,output_size))
+        self._nl_layers.append(tnn.Linear(prev_size,output_size))
       
+        # Setup linear network shape
+        self._layers_linear = t.nn.ModuleList([
+            tnn.Linear(input_size, layers_linear[0])])
+        prev_size = layers_linear[0]
+
+        for layer_size in layers_linear[1:-1]:
+            self._layers_linear.append(
+                tnn.Linear(prev_size,layer_size)
+            )
+            prev_size = layer_size
+        self._layers_linear.append(tnn.Linear(prev_size,output_size))
+
         # Apply initial weights
         self.apply(self.init_weights)
 
@@ -237,7 +247,15 @@ class CompositeNN(t.nn.Module, mf_model.MFModel):
         #self.optimizer = t.optim.LBFGS(self.parameters(), lr = 1 )
 
         self.training_error = self.train()        
-   
+    
+    def forward(self, x):
+        return t.cat((self._layers_linear(x),self._layers_nl(x)),dim=1)
+
+    # Evaluate function defines method for use in generic model class
+    def evaluate(self,x_in):
+        with t.no_grad():
+            return self(x_in)
+
     # Calculates the training error using the given loss function
     def training_accuracy(self, device=DEVICE):
         # Validation loop
@@ -316,36 +334,8 @@ class CompositeNN(t.nn.Module, mf_model.MFModel):
 
         return train_error_history
 
-    # # Define a training iteration function to handle memory stuff for LBFGS
-    # def _training_iteration(self,device=DEVICE):
-    #     running_loss = 0.0
-    #     for i, (X,y) in enumerate(self.training_dataloader):
-    #         X = X.to(device)
-    #         y = y.to(device)
-
-    #         X_ = t.autograd.Variable(X, requires_grad=True)
-    #         y_ = t.autograd.Variable(y)
-            
-    #         def closure():
-    #             if t.is_grad_enabled():
-    #                 self.optimizer.zero_grad()
-    #             output = self.evaluate(X_)
-    #             loss_t = self.loss(output,y_)
-    #             if loss_t.requires_grad():
-    #                 loss_t.backward()
-    #             return loss_t
-    #         self.optimizer.step(closure)
-
-    #         # calculate the loss again for monitoring
-    #         output = self(X_)
-    #         loss = closure()
-    #         running_loss += loss.item()
-    #         return running_loss
         
-    # Evaluate function defines method for use in generic model class
-    def evaluate(self,x_in):
-        with t.no_grad():
-            return self.__forward(x_in)
+    
     
     # Plots errors output from training to show path to parameters
     def plot_error(self):
@@ -359,11 +349,7 @@ class CompositeNN(t.nn.Module, mf_model.MFModel):
         plt.show()
 
 
-    def __forward(self, x):
-        for l in self._layers:
-            xnext = l(x) # call the layers in sequence
-            x = xnext
-        return x
+
 
 # Multifidelity Neural Network
 # Setup based on Meng and Karniadakis 2020 paper
