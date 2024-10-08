@@ -243,7 +243,7 @@ class CompositeNN(t.nn.Module, mf_model.MFModel):
         self.apply(self.init_weights)
 
         # Set the optimizer
-        self.optimizer = t.optim.Adam(self.parameters(), lr=0.005, weight_decay=0.0001)
+        self.optimizer = t.optim.Adam(self.parameters(), lr=0.001, weight_decay=0.001)
         #self.optimizer = t.optim.LBFGS(self.parameters(), lr = 1 )
 
         self.training_error = self.train()        
@@ -363,14 +363,13 @@ class MultiFidelityNN(mf_model.MFModel):
         super().__init__(x_lf, y_lf, x_hf, y_hf)
 
         # Generate a NN model of the lf model data
-        print(x_lf)
         self.low_fidelity_nn = MLPNetwork(x_lf, y_lf,hidden_layer_size=lf_nn_dim,activation=tnn.Tanh())
 
         # Create lf approximations of the high fidelity data using the lf model
         yhat_lf = self.low_fidelity_nn.evaluate(x_hf)
         x_hf_prime = t.cat((yhat_lf,x_hf),dim=1)
         
-        self.high_fidelity_nn = MLPNetwork(x_hf_prime,y_hf,hidden_layer_size=hf_nl_nn_dim,activation=tnn.Linear())
+        self.high_fidelity_nn = MLPNetwork(x_hf_prime,y_hf,hidden_layer_size=hf_nl_nn_dim,activation=tnn.Tanh())
 
 
     def evaluate(self,x):
@@ -440,6 +439,8 @@ def TestFunctionMFSNN():
     X_check = t.tensor(X_check, dtype=t.float32)
     mfnn_model.plot_model(X_check,"MF Model", color = "blue", label="MFNN")
     mfnn_model.low_fidelity_nn.plot_model(X_check, "MF Model")
+    hf_fxn.plot_data(name="MF Model",color = "blue", label="HF Fxn", linestyle="dashed")
+    lf_fxn.plot_data(name="MF Model",color = "black", label="LF Fxn", linestyle="dashed")
     plt.show()
 
 def Test2DFunction():
