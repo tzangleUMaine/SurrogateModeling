@@ -1,4 +1,5 @@
 import numpy as np
+import matplotlib.pyplot as plt
 import model
 
 class expensive_fxn(model.Model):
@@ -20,6 +21,21 @@ class expensive_fxn(model.Model):
         else:
             print('invalid function index')
         return y_samp
+    
+    def plot_data(self,name="Model", color="black", label = "model", linestyle='solid'):
+        # DRAGONS: not setup for higher dimensions
+        dim, xmin, xmax = function_bounds(self.fxn_ind)
+        x_vals = np.linspace(xmin,xmax,300)
+        y_hat = np.zeros(len(x_vals))
+        for i, x in enumerate(x_vals):
+            y_hat[i] = self.evaluate(x)
+        plt.figure(name)
+        plt.title(name)
+        plt.plot(x_vals, y_hat, color = color, label = label, linestyle = linestyle)
+        plt.legend()
+        plt.xlabel("x")
+        plt.ylabel("y(x)")
+
 
 # Calculate sample points from the specified "Cheap" test function
 # This function example is from Forrester 2008
@@ -45,6 +61,20 @@ class cheap_fxn(model.Model):
         else:
             print('invalid function index')
         return y_samp
+    
+    def plot_data(self,name="Model", color="black", label = "model", linestyle='solid'):
+        # DRAGONS: not setup for higher dimensions
+        dim, xmin, xmax = function_bounds(self.fxn_ind)
+        x_vals = np.linspace(xmin,xmax,300)
+        y_hat = np.zeros(len(x_vals))
+        for i, x in enumerate(x_vals):
+            y_hat[i] = self.evaluate(x)
+        plt.figure(name)
+        plt.title(name)
+        plt.plot(x_vals, y_hat, color = color, label = label, linestyle = linestyle)
+        plt.legend()
+        plt.xlabel("x")
+        plt.ylabel("y(x)")
 
 # Function returns the bounds and input dimensions of the function of interest
 def function_bounds(fxn_ind):
@@ -74,3 +104,4 @@ def function_bounds(fxn_ind):
         xmax[1] = 2
     
     return dim,xmin,xmax
+
