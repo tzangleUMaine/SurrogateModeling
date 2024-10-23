@@ -19,7 +19,8 @@ import model
 
 # Class for a linear network of variable shape for regression purposes
 class MLPNetwork(t.nn.Module, model.Model):
-    def __init__(self, X, y, hidden_layer_size = [10,8], activation = tnn.Tanh(), loss = t.nn.MSELoss(), learning_rate=0.001, weight_decay=0.001, weight_file="network_weights", load_weights=False, write_weights=False):
+    def __init__(self, X, y, hidden_layer_size = [10,8], activation = tnn.Tanh(), loss = t.nn.MSELoss(), 
+                    learning_rate=0.001, weight_decay=0.001,batch_size=10, weight_file="network_weights", load_weights=False, write_weights=False):
         t.nn.Module.__init__(self)
         model.Model.__init__(self,X,y)
 
@@ -32,8 +33,11 @@ class MLPNetwork(t.nn.Module, model.Model):
         # Set loss function
         self.loss = loss
 
+        # Set batch size
+        self.batch_size = batch_size
+
         # Store the model data
-        self.training_dataloader = DataLoader(list(zip(X,y)), shuffle=True, batch_size=1)
+        self.training_dataloader = DataLoader(list(zip(X,y)), shuffle=True, batch_size=self.batch_size)
 
         # Generate the neural network
         __, input_size = X.shape
@@ -42,8 +46,9 @@ class MLPNetwork(t.nn.Module, model.Model):
 
         # Setup network shape
         self._layers = t.nn.ModuleList([
-            tnn.Linear(input_size, hidden_layer_size[0]),
-            activation])
+            tnn.Linear(input_size, hidden_layer_size[0])])
+        if activation != "none":
+            self._layers.append(activation)
         prev_size = hidden_layer_size[0]
 
         for layer_size in hidden_layer_size[1:-1]:
@@ -69,7 +74,25 @@ class MLPNetwork(t.nn.Module, model.Model):
         
         if write_weights:
             t.save(self.state_dict(), weight_file)
+
+    # Helper function to initialize weights
+    def init_weights(self, m):
+        if isinstance(m, tnn.Linear):
+            tnn.init.xavier_uniform(m.weight)
+            m.bias.data.fill_(0.01)
    
+   # Define a forward method here
+    def __forward(self, x):
+        for l in self._layers:
+            xnext = l(x) # call the layers in sequence
+            x = xnext
+        return x
+
+    # Evaluate function defines method for use in generic model class
+    def evaluate(self,x_in):
+        with t.no_grad():
+            return self.__forward(x_in)
+
     # Calculates the training error using the given loss function
     def training_accuracy(self, device=DEVICE):
         # Validation loop
@@ -86,28 +109,6 @@ class MLPNetwork(t.nn.Module, model.Model):
         train_error /= training_size
 
         return train_error   
-
-    # Helper function to initialize weights
-    def init_weights(self, m):
-        if isinstance(m, tnn.Linear):
-            tnn.init.xavier_uniform(m.weight)
-            m.bias.data.fill_(0.01)
-
-    def validation_accuracy(self, X_valid, y_valid, device=DEVICE):        
-        
-        valid_dataloader = DataLoader(list(zip(X_valid,y_valid)), shuffle=True)
-        validation_size = len(valid_dataloader.dataset)
-
-        # Validation Loop
-        with t.no_grad():
-            for X, y in self.valid_dataloader:
-                X = X.to(device)
-                y = y.to(device)
-                pred = self.evaluate(X)
-                validation_error = self.loss(pred, y)
-
-        validation_error /=validation_size
-        return validation_error
 
     # Train uses backpropogation to solve for the model parameters
     def train(self, device=DEVICE):
@@ -126,14 +127,6 @@ class MLPNetwork(t.nn.Module, model.Model):
                 # Backpropagation
                 self.optimizer.zero_grad()
                 loss_t.backward()
-                # def closure():
-                #     self.optimizer.zero_grad()
-                #     pred = self.__forward(X)
-                #     loss_t = self.loss(pred,y)
-                #     # for p in self.parameters():
-                #     #     loss_t += 0.01*(p**2).sum()
-                #     loss_t.backward()
-                #     return loss_t
                 
                 self.optimizer.step()
 
@@ -146,10 +139,21 @@ class MLPNetwork(t.nn.Module, model.Model):
 
         return train_error_history
 
-    # Evaluate function defines method for use in generic model class
-    def evaluate(self,x_in):
+    def validation_accuracy(self, X_valid, y_valid, device=DEVICE):        
+        
+        valid_dataloader = DataLoader(list(zip(X_valid,y_valid)), shuffle=True)
+        validation_size = len(valid_dataloader.dataset)
+
+        # Validation Loop
         with t.no_grad():
-            return self.__forward(x_in)
+            for X, y in self.valid_dataloader:
+                X = X.to(device)
+                y = y.to(device)
+                pred = self.evaluate(X)
+                validation_error = self.loss(pred, y)
+
+        validation_error /=validation_size
+        return validation_error
     
     # Plots errors output from training to show path to parameters
     def plot_training_error(self, name):
@@ -161,17 +165,17 @@ class MLPNetwork(t.nn.Module, model.Model):
         plt.xlabel("Epoch")
         plt.ylabel("Error")
 
-    def __forward(self, x):
-        for l in self._layers:
-            xnext = l(x) # call the layers in sequence
-            x = xnext
-        return x
+    def visualize_shape(self):
+        input_size, __ = self.x.shape
+        model_graph = draw_graph(self,input_size=(self.batch_size,input_size),device="meta")
+        model_graph.visual_graph
+
 
 # Composite Neural Network 
 # Explicitly seperates the network into a linear and non-linear network.
 # Fully connected NN architecture in both cases is concatenated at the final layer
 class CompositeNN(t.nn.Module, mf_model.MFModel):
-    def __init__(self, X, y, layers_nl = [10,8], layers_linear = [10,10], activation_nl = tnn.Tanh(), loss = t.nn.MSELoss(), learning_rate=0.001, weight_decay=0.001):
+    def __init__(self, X, y, layers_nl = [10,8], layers_linear = [10,10], activation_nl = tnn.Tanh(), loss = t.nn.MSELoss(), learning_rate=0.001, weight_decay=0.001, batch_size=10):
         t.nn.Module.__init__(self)
         model.Model.__init__(self,X,y)
 
@@ -184,8 +188,11 @@ class CompositeNN(t.nn.Module, mf_model.MFModel):
         # Set loss function
         self.loss = loss
 
+        # Set batch size
+        self.batch_size = batch_size
+
         # Store the model data
-        self.training_dataloader = DataLoader(list(zip(X,y)), shuffle=True, batch_size=20)
+        self.training_dataloader = DataLoader(list(zip(X,y)), shuffle=True, batch_size=self.batch_size)
 
         # Generate the neural network
         __, input_size = X.shape
@@ -224,7 +231,6 @@ class CompositeNN(t.nn.Module, mf_model.MFModel):
 
         # Set the optimizer
         self.optimizer = t.optim.Adam(self.parameters(), lr=learning_rate, weight_decay=weight_decay)
-        #self.optimizer = t.optim.LBFGS(self.parameters(), lr = 1 )
 
         self.training_error = self.train()        
     
@@ -369,7 +375,7 @@ def TestFunctionMLP():
     X_check = t.tensor(X_check, dtype=t.float32)
     y_check = t.tensor(y_check, dtype=t.float32)
     loss = t.nn.MSELoss()
-    lf_model = MLPNetwork(X_lf,y_lf,hidden_layer_size=[20,20],loss=loss)
+    lf_model = MLPNetwork(X_lf,y_lf,hidden_layer_size=[20,20],activation="none",loss=loss)
     #error_history = lf_model.train()
 
     # Plot the results
@@ -377,7 +383,8 @@ def TestFunctionMLP():
     lf_model.plot_model(X_check,"LF Model", color = "blue", label="Model")
     plt.show()
 
-    lf_model.plot_error()
+    lf_model.visualize_shape()
+    lf_model.plot_training_error()
 
 def TestFunctionMFSNN():
     fxn_ind = 1
@@ -438,4 +445,4 @@ def Test2DFunction():
     nn_2d = MLPNetwork(X_in,Y_in)
     Y_star = nn_2d.evaluate(X_in)
 
-TestFunctionMFSNN()
+TestFunctionMLP()
