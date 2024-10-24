@@ -25,7 +25,7 @@ class MLPNetwork(t.nn.Module, model.Model):
         model.Model.__init__(self,X,y)
 
         # Hyper parameters
-        self.epochs = 1000        
+        self.epochs = 10        
 
         # Report rate
         self.report_steps = 10
@@ -45,20 +45,20 @@ class MLPNetwork(t.nn.Module, model.Model):
         #self.mlp_network = MLPNetwork(input_size, output_size, hidden_layer_size, activation)
 
         # Setup network shape
-        self._layers = t.nn.ModuleList([
-            tnn.Linear(input_size, hidden_layer_size[0])])
+        nn_layers = []
+        nn_layers.append(tnn.Linear(input_size, hidden_layer_size[0]))
         if activation != "none":
-            self._layers.append(activation)
+            nn_layers.append(activation)
         prev_size = hidden_layer_size[0]
 
         for layer_size in hidden_layer_size[1:-1]:
-            self._layers.append(
-                tnn.Linear(prev_size,layer_size)
-            )
+            nn_layers.append(tnn.Linear(prev_size,layer_size))
             if activation != "none":
-                self._layers.append(activation)
+                nn_layers.append(activation)
             prev_size = layer_size
-        self._layers.append(tnn.Linear(prev_size,output_size))
+        nn_layers.append(tnn.Linear(prev_size,output_size))
+
+        self._layers = tnn.Sequential(*nn_layers)
       
         # Apply initial weights
         self.apply(self.init_weights)
@@ -82,16 +82,14 @@ class MLPNetwork(t.nn.Module, model.Model):
             m.bias.data.fill_(0.01)
    
    # Define a forward method here
-    def __forward(self, x):
-        for l in self._layers:
-            xnext = l(x) # call the layers in sequence
-            x = xnext
+    def forward(self, x):
+        x = self._layers(x)
         return x
 
     # Evaluate function defines method for use in generic model class
     def evaluate(self,x_in):
         with t.no_grad():
-            return self.__forward(x_in)
+            return self.forward(x_in)
 
     # Calculates the training error using the given loss function
     def training_accuracy(self, device=DEVICE):
@@ -121,7 +119,7 @@ class MLPNetwork(t.nn.Module, model.Model):
                 y = y.to(device)
 
                 #Compute prediction and loss
-                pred = self.__forward(X)
+                pred = self.forward(X)
                 loss_t = self.loss(pred, y)
 
                 # Backpropagation
@@ -167,7 +165,7 @@ class MLPNetwork(t.nn.Module, model.Model):
 
     def visualize_shape(self):
         input_size, __ = self.x.shape
-        model_graph = draw_graph(self,input_size=(self.batch_size,input_size),device="meta")
+        model_graph = draw_graph(self(),input_size=(input_size,self.batch_size),device="meta")
         model_graph.visual_graph
 
 
