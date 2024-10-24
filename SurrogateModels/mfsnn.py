@@ -19,7 +19,7 @@ import model
 
 # Class for a linear network of variable shape for regression purposes
 class MLPNetwork(t.nn.Module, model.Model):
-    def __init__(self, X, y, hidden_layer_size = [10,8], activation = tnn.Tanh(), loss = t.nn.MSELoss(), learning_rate=0.001, weight_decay=0.001, weight_file="network_weights", load_weights=False, write_weights=False):
+    def __init__(self, X, y, hidden_layer_size = [10,8], activation = tnn.Tanh(), loss = t.nn.MSELoss(), learning_rate=0.001, weight_decay=0.001, weight_file="network_weights", load_weights=False, write_weights=True):
         t.nn.Module.__init__(self)
         model.Model.__init__(self,X,y)
 
@@ -171,7 +171,7 @@ class MLPNetwork(t.nn.Module, model.Model):
 # Explicitly seperates the network into a linear and non-linear network.
 # Fully connected NN architecture in both cases is concatenated at the final layer
 class CompositeNN(t.nn.Module, mf_model.MFModel):
-    def __init__(self, X, y, layers_nl = [10,8], layers_linear = [10,10], activation_nl = tnn.Tanh(), loss = t.nn.MSELoss(), learning_rate=0.001, weight_decay=0.001):
+    def __init__(self, X, y, layers_nl = [10,8], layers_linear = [10], activation_nl = tnn.Tanh(), loss = t.nn.MSELoss(), learning_rate=0.001, weight_decay=0.001):
         t.nn.Module.__init__(self)
         model.Model.__init__(self,X,y)
 
@@ -207,8 +207,9 @@ class CompositeNN(t.nn.Module, mf_model.MFModel):
         self._nl_layers = tnn.Sequential(*self._nl_layers)
       
         # Setup linear network shape
+        layers_linear.insert(0,input_size)
         self._layers_linear = []
-        self._layers_linear.append(tnn.Linear(input_size, layers_linear[0]))
+        #self._layers_linear.append(tnn.Linear(input_size, layers_linear[0]))
         prev_size = layers_linear[0]
 
         for layer_size in layers_linear[1:-1]:
@@ -222,6 +223,10 @@ class CompositeNN(t.nn.Module, mf_model.MFModel):
         # Apply initial weights
         self.apply(self.init_weights)
 
+        #self.alpha = tnn.parameter.Parameter(t.tensor([0.9]))
+        self.alpha = 0
+
+
         # Set the optimizer
         self.optimizer = t.optim.Adam(self.parameters(), lr=learning_rate, weight_decay=weight_decay)
         #self.optimizer = t.optim.LBFGS(self.parameters(), lr = 1 )
@@ -229,7 +234,7 @@ class CompositeNN(t.nn.Module, mf_model.MFModel):
         self.training_error = self.train()        
     
     def forward(self, x):
-        return t.cat((self._layers_linear(x),self._nl_layers(x)),dim=1)
+        return self.alpha * self._layers_linear(x) + (1.0-self.alpha) * self._nl_layers(x)
 
     # Evaluate function defines method for use in generic model class
     def evaluate(self,x_in):
@@ -302,19 +307,15 @@ class CompositeNN(t.nn.Module, mf_model.MFModel):
             train_error_history.append(train_error)
 
         return train_error_history       
-    
-    
-    # Plots errors output from training to show path to parameters
-    def plot_error(self):
+        
+    def plot_training_error(self, name):
         epoch_number = np.arange(0,self.epochs,1)
-        plt.figure("Model Error")
-        plt.title("Model Error")
+        plt.figure(name)
+        plt.title(name)
         plt.plot(epoch_number, self.training_error, color = "blue", label = "Training", linestyle = "-")        
         plt.legend()
         plt.xlabel("Epoch")
         plt.ylabel("Error")
-        plt.show()
-
     # def visual_graph(self):
     #     __, input_size = self.x.shape
     #     model_graph = draw_graph(self(), input_size=(2,input_size))
@@ -338,7 +339,7 @@ class MultiFidelityNN(mf_model.MFModel):
         x_hf_prime = t.cat((yhat_lf,x_hf),dim=1)
         
         self.high_fidelity_nn = CompositeNN(x_hf_prime, y_hf, layers_nl=hf_nl_nn_dim, layers_linear=hf_linear_nn_dim, activation_nl=tnn.Tanh(), loss=t.nn.MSELoss(), learning_rate=lr_mf, weight_decay=wd_mf)
-        #self.high_fidelity_nn = MLPNetwork(x_hf_prime, y_hf, layers_nl=hf_nl_nn_dim, layers_linear=hf_linear_nn_dim, activation_nl=tnn.Tanh(), loss=t.nn.MSELoss(), learning_rate=lr_mf, weight_decay=wd_mf)
+        #self.high_fidelity_nn = MLPNetwork(x_hf_prime, y_hf, hidden_layer_size=hf_nl_nn_dim, activation=tnn.Tanh(), loss=t.nn.MSELoss(), learning_rate=lr_mf, weight_decay=wd_mf)
 
     def evaluate(self,x):
         yhat_lf = self.low_fidelity_nn.evaluate(x)
@@ -398,9 +399,9 @@ def TestFunctionMFSNN():
     X_hf = t.tensor(X_hf, dtype=t.float32)
     y_hf = t.tensor(y_hf, dtype=t.float32)
 
-    mfnn_model = MultiFidelityNN(X_lf, y_lf, X_hf, y_hf, lf_nn_dim=[10,10,10,10], hf_linear_nn_dim=[6,4], hf_nl_nn_dim= [10,10,10],lr_lf=0.005,wd_lf=0.0001,lr_mf=0.1, wd_mf=0.01)
+    mfnn_model = MultiFidelityNN(X_lf, y_lf, X_hf, y_hf, lf_nn_dim=[10,10,10,10], hf_linear_nn_dim=[], hf_nl_nn_dim= [10,10,10],lr_lf=0.005,wd_lf=0.0001,lr_mf=0.01, wd_mf=0.0001)
 
-    mfnn_model.high_fidelity_nn.visual_graph()
+    #mfnn_model.high_fidelity_nn.visual_graph()
 
     # Plot the results
     mfnn_model.plot_data("MF Model")
@@ -414,8 +415,8 @@ def TestFunctionMFSNN():
     plt.show()
 
     # Plot the model error
-    #mfnn_model.low_fidelity_nn.plot_training_error("Low Fidelity Training Error")
-    #plt.show()
+    mfnn_model.low_fidelity_nn.plot_training_error("Low Fidelity Training Error")
+    plt.show()
     mfnn_model.high_fidelity_nn.plot_training_error("Multi-Fidelity Training Error")
     plt.show()
 
