@@ -18,6 +18,10 @@ class expensive_fxn(model.Model):
         elif self.fxn_ind == 5:
             y_samp = np.zeros((Xin.shape[0],1))
             y_samp[:,0] = 4-2.1*Xin[:,0]**4+(1.0/3.0)*Xin[:,0]**6+Xin[:,0]*Xin[:,1]-4*Xin[:,1]**2+4.*Xin[:,1]**4
+        elif self.fxn_ind == 6:
+            y_samp = np.where(Xin<0.5,\
+                              2*discontinuous_fxn(Xin)-20*Xin+20,\
+                                4+2*discontinuous_fxn(Xin)-20*Xin+20)
         else:
             print('invalid function index')
         return y_samp
@@ -58,6 +62,10 @@ class cheap_fxn(model.Model):
         elif self.fxn_ind == 5:
             y_samp = np.zeros(Xin.shape()[0],1)
             y_samp[:,0] = 4-0.5*Xin[:,0]**4+(0.04)*Xin[:,0]**6+0.5*Xin[:,0]*Xin[:,1]-1.96*Xin[:,1]**2+0.96*Xin[:,1]**4
+        # Meng Karniadikis functions
+        # Discontinuous function
+        elif self.fxn_ind == 6:
+           y_samp = discontinuous_fxn(Xin)
         else:
             print('invalid function index')
         return y_samp
@@ -102,6 +110,16 @@ def function_bounds(fxn_ind):
         xmin[1] = -2
         xmax[0] = 2
         xmax[1] = 2
+    elif fxn_ind == 6:
+        dim = 1
+        xmin = 0
+        xmax = 1
     
     return dim,xmin,xmax
+
+def discontinuous_fxn(Xin):
+    y_samp = np.where(Xin<0.5, \
+                       (0.5*(6*Xin - 2)**2*np.sin(12*Xin-4)+10*(Xin-0.5)-5),\
+                        (3+0.5*(6*Xin-2)**2*np.sin(12*Xin-4)+10*(Xin-0.5)-5))
+    return y_samp
 
