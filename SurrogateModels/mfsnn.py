@@ -20,7 +20,7 @@ import model
 # Class for a linear network of variable shape for regression purposes
 class MLPNetwork(t.nn.Module, model.Model):
     def __init__(self, X, y, hidden_layer_size = [10,8], activation = tnn.Tanh(), loss = t.nn.MSELoss(), 
-                    learning_rate=0.001, weight_decay=0.001,batch_size=10, weight_file="network_weights", load_weights=False, write_weights=False):
+                    learning_rate=0.001, weight_decay=0.001,batch_size=10, weight_file="network_weights", load_weights=False, write_weights=False, train=True):
         t.nn.Module.__init__(self)
         model.Model.__init__(self,X,y)
 
@@ -172,8 +172,8 @@ class MLPNetwork(t.nn.Module, model.Model):
 # Composite Neural Network 
 # Explicitly seperates the network into a linear and non-linear network.
 # Fully connected NN architecture in both cases is concatenated at the final layer
-class CompositeNN(t.nn.Module, mf_model.MFModel):
-    def __init__(self, X, y, layers_nl = [10,8], layers_linear = [10,10], activation_nl = tnn.Tanh(), loss = t.nn.MSELoss(), learning_rate=0.001, weight_decay=0.001, batch_size=10):
+class CompositeNN(tnn.Module, mf_model.MFModel):
+    def __init__(self, X, y, layers_nl = [10,8], layers_linear = [10,10], activation_nl = tnn.Tanh(), loss = t.nn.MSELoss(), learning_rate=0.001, weight_decay=0.001, batch_size=10, train=True):
         t.nn.Module.__init__(self)
         model.Model.__init__(self,X,y)
 
@@ -231,13 +231,16 @@ class CompositeNN(t.nn.Module, mf_model.MFModel):
         self.apply(self.init_weights)
 
         # Set weight for composite network combination
-        # self.alpha = tnn.parameter.Parameter(t.tensor([0.9]))
-        self.alpha = 0.99
+        self.alpha = tnn.parameter.Parameter(t.tensor([0.9]))
+        # self.alpha = 0.99
 
-        # Set the optimizer
-        self.optimizer = t.optim.Adam(self.parameters(), lr=learning_rate, weight_decay=weight_decay)
+        # Check whether the network is just being setup or if traing is specified
+        if train:
+            # Set the optimizer and parameters
+            self.optimizer = t.optim.Adam(self.parameters(), lr=learning_rate, weight_decay=weight_decay)
 
-        self.training_error = self.train()        
+            # Run training on network
+            self.training_error = self.train()        
     
     def forward(self, x):
         return self.alpha * self._layers_linear(x) + (1.0-self.alpha) * self._nl_layers(x)
@@ -335,33 +338,86 @@ class CompositeNN(t.nn.Module, mf_model.MFModel):
 # A low fidelity NN and a linear and non-linear HF NN
 # All nn dimensions are given as the size of the hidden layers.
 # Input and output size are given by the x and y data
-class MultiFidelityNN(mf_model.MFModel):
+class MultiFidelityNN(tnn.Module,mf_model.MFModel):
     def __init__(self, x_lf, y_lf, x_hf, y_hf, lf_nn_dim, hf_linear_nn_dim, hf_nl_nn_dim, load_lf_from_file = False, lr_lf = 0.005, wd_lf = 0.000001, lr_mf = 0.001, wd_mf = 0.001):
         # Populate the multi-fidelity model data
-        super().__init__(x_lf, y_lf, x_hf, y_hf)
+        tnn.Module.__init__(self)
+        mf_model.MFModel.__init__(self,x_lf, y_lf, x_hf, y_hf)
 
         # Generate a NN model of the lf model data
-        self.low_fidelity_nn = MLPNetwork(x_lf, y_lf,hidden_layer_size=lf_nn_dim,activation=tnn.Tanh(), learning_rate=lr_lf, weight_decay=wd_lf, weight_file="LF_Network", load_weights=False)
+        self.low_fidelity_nn = MLPNetwork(x_lf, y_lf,hidden_layer_size=lf_nn_dim,activation=tnn.Tanh(), train=True)
 
         # Create lf approximations of the high fidelity data using the lf model
         yhat_lf = self.low_fidelity_nn.evaluate(x_hf)
         x_hf_prime = t.cat((yhat_lf,x_hf),dim=1)
         
         # Train composite NN
-        self.high_fidelity_nn = CompositeNN(x_hf_prime, y_hf, layers_nl=hf_nl_nn_dim, layers_linear=hf_linear_nn_dim, activation_nl=tnn.Tanh(), loss=t.nn.MSELoss(), learning_rate=lr_mf, weight_decay=wd_mf)
+        self.high_fidelity_nn = CompositeNN(x_hf_prime, y_hf, layers_nl=hf_nl_nn_dim, layers_linear=hf_linear_nn_dim, activation_nl=tnn.Tanh(), train=True)
 
     def evaluate(self,x):
+        return self.forward(x)
+        
+    def forward(self,x):
         yhat_lf = self.low_fidelity_nn.evaluate(x)
         x_hf = t.cat((yhat_lf,x),dim=1)
         yhat_hf = self.high_fidelity_nn.evaluate(x_hf)
         return yhat_hf
-    
+
+    # Private function that outputs both mf and lf approx of x
+    def _forward_loud(self,x):        
+        yhat_lf = self.low_fidelity_nn.evaluate(x)
+        x_hf = t.cat((yhat_lf,x),dim=1)
+        yhat_hf = self.high_fidelity_nn.evaluate(x_hf)
+        return yhat_hf, yhat_lf
+
+    # def loss(self, yl_hat, yl, y_hat, y):
+    #     t.nn.MSELoss(yl_hat, yl)
+    #     return 0
+
+    # Train uses backpropogation to solve for the model parameters
+    # def train(self, device=DEVICE):
+    #     self.to(device)
+    #     train_error_history = []
+    #     for t in range(self.epochs):
+    #         # Train loop
+    #         for X, y in self.training_dataloader:
+    #             X = X.to(device)
+    #             y = y.to(device)
+
+    #             #Compute prediction and loss
+    #             pred = self.forward(X)
+    #             loss_t = self.loss(pred, y)
+
+    #             # Backpropagation
+    #             self.optimizer.zero_grad()
+    #             loss_t.backward()
+                
+    #             self.optimizer.step()
+
+    #         train_error = self.training_accuracy()
+    #         if t%self.report_steps==0:
+    #             print(f"----Progress Update----")
+    #             print(f"Epoch: {t} \n")
+    #             print(f"Training Error: {train_error} \n")
+    #         train_error_history.append(train_error)
+
+    #     return train_error_history
+
     def generate_plots(self):
         self.plot_data()
 
-
+    
 # Function used for testing LowFidelity NN capabilities
 # further showcase of class can be found in MFSNN.ipynb
+def TestMFFXN():
+    fxn_ind = 6
+    hf_fxn = mfs_functions.expensive_fxn(fxn_ind)
+    lf_fxn = mfs_functions.cheap_fxn(fxn_ind)
+    
+    hf_fxn.plot_data(name="Discontinuous MF Fxn",color = "blue", label="HF Fxn", linestyle="dashed")
+    lf_fxn.plot_data(name="Discontinuous MF Fxn",color = "black", label="LF Fxn", linestyle="dashed")
+    plt.show()
+
 def TestFunctionMLP():
     fxn_ind = 1
     hf_fxn = mfs_functions.expensive_fxn(1)
@@ -449,4 +505,4 @@ def Test2DFunction():
     nn_2d = MLPNetwork(X_in,Y_in)
     Y_star = nn_2d.evaluate(X_in)
 
-#TestFunctionMFSNN()
+TestMFFXN()
