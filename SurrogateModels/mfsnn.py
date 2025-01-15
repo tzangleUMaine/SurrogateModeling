@@ -15,6 +15,7 @@ import numpy as np
 import mfs_functions
 import mf_model
 import model
+import data_handler
 
 
 # Class for a linear network of variable shape for regression purposes
@@ -35,6 +36,10 @@ class MLPNetwork(t.nn.Module, model.Model):
 
         # Set batch size
         self.batch_size = batch_size
+
+        # Normalize the y data
+        self.datahandler = data_handler.DataHandler(y)
+        y = self.datahandler.scale(y)
 
         # Store the model data
         self.training_dataloader = DataLoader(list(zip(X,y)), shuffle=True, batch_size=self.batch_size)
@@ -89,7 +94,7 @@ class MLPNetwork(t.nn.Module, model.Model):
     # Evaluate function defines method for use in generic model class
     def evaluate(self,x_in):
         with t.no_grad():
-            return self.forward(x_in)
+            return self.datahandler.unscale(self.forward(x_in))
 
     # Calculates the training error using the given loss function
     def training_accuracy(self, device=DEVICE):
@@ -101,7 +106,7 @@ class MLPNetwork(t.nn.Module, model.Model):
             for X, y in self.training_dataloader:
                 X = X.to(device)
                 y = y.to(device)
-                pred = self.evaluate(X)
+                pred = self.forward(X)
                 train_error = self.loss(pred, y)
 
         train_error /= training_size
@@ -435,7 +440,7 @@ def TestFunctionMLP():
     X_check = t.tensor(X_check, dtype=t.float32)
     y_check = t.tensor(y_check, dtype=t.float32)
     loss = t.nn.MSELoss()
-    lf_model = MLPNetwork(X_lf,y_lf,hidden_layer_size=[20,20],activation="none",loss=loss)
+    lf_model = MLPNetwork(X_lf,y_lf,hidden_layer_size=[10,10,10,10],activation=tnn.Tanh(),learning_rate=0.01, weight_decay=0,loss=loss)
     #error_history = lf_model.train()
 
     # Plot the results
@@ -443,8 +448,9 @@ def TestFunctionMLP():
     lf_model.plot_model(X_check,"LF Model", color = "blue", label="Model")
     plt.show()
 
-    lf_model.visualize_shape()
-    lf_model.plot_training_error()
+    #lf_model.visualize_shape()
+    lf_model.plot_training_error("Training Error")
+    plt.show()
 
 def TestFunctionMFSNN():
     fxn_ind = 1
@@ -505,4 +511,4 @@ def Test2DFunction():
     nn_2d = MLPNetwork(X_in,Y_in)
     Y_star = nn_2d.evaluate(X_in)
 
-TestMFFXN()
+TestFunctionMLP()
