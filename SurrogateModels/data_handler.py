@@ -7,7 +7,7 @@ class DataHandler:
         self.ptp = self.max-self.min
 
     def scale(self, data):
-        return (data - self.min)/self.ptp
+        return 2*((data - self.min)/self.ptp) - 1.0
     
     def unscale(self, data):
-        return data*self.ptp + self.min
+        return ((data+1)*self.ptp)/2 + self.min

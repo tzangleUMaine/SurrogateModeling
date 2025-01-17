@@ -4,8 +4,8 @@ import matplotlib.pyplot as plt
 from torch.utils.data import DataLoader
 from torchview import draw_graph
 import os
-
-t.manual_seed(17)
+print(t.__version__)
+#t.manual_seed(17)
 
 ## Doing it the Pytorch way without using our custom feature extraction
 DEVICE='cpu'
@@ -17,19 +17,20 @@ import mf_model
 import model
 import data_handler
 
+#t.set_default_tensor_type(t.DoubleTensor)
 
 # Class for a linear network of variable shape for regression purposes
 class MLPNetwork(t.nn.Module, model.Model):
-    def __init__(self, X, y, hidden_layer_size = [10,8], activation = tnn.Tanh(), loss = t.nn.MSELoss(), 
-                    learning_rate=0.001, weight_decay=0.001,batch_size=10, weight_file="network_weights", load_weights=False, write_weights=False, train=True):
+    def __init__(self, X, y, hidden_layer_size = [10,8], activation = tnn.ReLU(), loss = t.nn.MSELoss(), 
+                    learning_rate=0.001, weight_decay=0.001,batch_size=30, weight_file="network_weights", load_weights=False, write_weights=False, train=True):
         t.nn.Module.__init__(self)
         model.Model.__init__(self,X,y)
 
         # Hyper parameters
-        self.epochs = 1000        
+        self.epochs = 50        
 
         # Report rate
-        self.report_steps = 10
+        self.report_steps = 1
 
         # Set loss function
         self.loss = loss
@@ -66,10 +67,9 @@ class MLPNetwork(t.nn.Module, model.Model):
         self._layers = tnn.Sequential(*nn_layers)
       
         # Apply initial weights
-        self.apply(self.init_weights)
-
+        #self.apply(self.init_weights)
         # Set the optimizer
-        self.optimizer = t.optim.Adam(self.parameters(), lr = learning_rate, weight_decay = weight_decay)
+        self.optimizer = t.optim.LBFGS(self.parameters(), lr = learning_rate, max_iter=400)#, weight_decay = weight_decay)
 
         # Try loading weights from file
         if load_weights:
@@ -83,7 +83,7 @@ class MLPNetwork(t.nn.Module, model.Model):
     # Helper function to initialize weights
     def init_weights(self, m):
         if isinstance(m, tnn.Linear):
-            tnn.init.xavier_uniform(m.weight)
+            tnn.init.xavier_uniform_(m.weight)
             m.bias.data.fill_(0.01)
    
    # Define a forward method here
@@ -122,16 +122,17 @@ class MLPNetwork(t.nn.Module, model.Model):
             for X, y in self.training_dataloader:
                 X = X.to(device)
                 y = y.to(device)
+                def closure():
+                    #Compute prediction and loss
+                    pred = self.forward(X)
+                    loss_t = self.loss(pred, y)
 
-                #Compute prediction and loss
-                pred = self.forward(X)
-                loss_t = self.loss(pred, y)
-
-                # Backpropagation
-                self.optimizer.zero_grad()
-                loss_t.backward()
+                    # Backpropagation
+                    self.optimizer.zero_grad()
+                    loss_t.backward()
+                    return loss_t
                 
-                self.optimizer.step()
+                self.optimizer.step(closure)
 
             train_error = self.training_accuracy()
             if t%self.report_steps==0:
@@ -183,16 +184,20 @@ class CompositeNN(tnn.Module, mf_model.MFModel):
         model.Model.__init__(self,X,y)
 
         # Hyper parameters
-        self.epochs = 1000        
+        self.epochs = 50        
 
         # Report rate
-        self.report_steps = 10
+        self.report_steps = 1
 
         # Set loss function
         self.loss = loss
 
         # Set batch size
         self.batch_size = batch_size
+
+        # Normalize the y data
+        self.datahandler = data_handler.DataHandler(y)
+        y = self.datahandler.scale(y)
 
         # Store the model data
         self.training_dataloader = DataLoader(list(zip(X,y)), shuffle=True, batch_size=self.batch_size)
@@ -236,13 +241,13 @@ class CompositeNN(tnn.Module, mf_model.MFModel):
         self.apply(self.init_weights)
 
         # Set weight for composite network combination
-        self.alpha = tnn.parameter.Parameter(t.tensor([0.9]))
-        # self.alpha = 0.99
+        #self.alpha = tnn.parameter.Parameter(t.tensor([0.99]))
+        self.alpha = 0.999
 
         # Check whether the network is just being setup or if traing is specified
         if train:
             # Set the optimizer and parameters
-            self.optimizer = t.optim.Adam(self.parameters(), lr=learning_rate, weight_decay=weight_decay)
+            self.optimizer = t.optim.LBFGS(self.parameters(), lr = learning_rate, max_iter=400)
 
             # Run training on network
             self.training_error = self.train()        
@@ -253,7 +258,7 @@ class CompositeNN(tnn.Module, mf_model.MFModel):
     # Evaluate function defines method for use in generic model class
     def evaluate(self,x_in):
         with t.no_grad():
-            return self(x_in)
+            return self.datahandler.unscale(self.forward(x_in))
 
     # Calculates the training error using the given loss function
     def training_accuracy(self, device=DEVICE):
@@ -264,8 +269,9 @@ class CompositeNN(tnn.Module, mf_model.MFModel):
         for X, y in self.training_dataloader:
             X = X.to(device)
             y = y.to(device)
-            pred = self.evaluate(X)
-            train_error = self.loss(pred, y)
+            with t.no_grad():
+                pred = self.forward(X)
+                train_error = self.loss(pred, y)
 
         train_error /= training_size
 
@@ -302,16 +308,17 @@ class CompositeNN(tnn.Module, mf_model.MFModel):
             for X, y in self.training_dataloader:
                 X = X.to(device)
                 y = y.to(device)
+                def closure():
+                    #Compute prediction and loss
+                    pred = self.forward(X)
+                    loss_t = self.loss(pred, y)
 
-                #Compute prediction and loss
-                pred = self.forward(X)
-                loss_t = self.loss(pred, y)
-
-                # Backpropagation
-                self.optimizer.zero_grad()
-                loss_t.backward()
+                    # Backpropagation
+                    self.optimizer.zero_grad()
+                    loss_t.backward()
+                    return loss_t
                 
-                self.optimizer.step()
+                self.optimizer.step(closure)
 
             train_error = self.training_accuracy()
             if t%self.report_steps==0:
@@ -431,16 +438,20 @@ def TestFunctionMLP():
     X_lf = np.zeros([30,1])
     X_lf[:,0] = np.linspace(0.0,1.0,30,endpoint=True)
     y_lf = lf_fxn.evaluate(X_lf)
-    X_lf = t.tensor(X_lf, dtype=t.float32)
-    y_lf = t.tensor(y_lf, dtype=t.float32)
+    # X_lf = t.tensor(X_lf, dtype=t.float32)
+    # y_lf = t.tensor(y_lf, dtype=t.float32)
+    X_lf = t.tensor(X_lf)
+    y_lf = t.tensor(y_lf)
 
     X_check = np.zeros([300,1])
     X_check[:,0] = np.linspace(0,1.0,300,endpoint=True)
     y_check = lf_fxn.evaluate(X_check)
-    X_check = t.tensor(X_check, dtype=t.float32)
-    y_check = t.tensor(y_check, dtype=t.float32)
+    # X_check = t.tensor(X_check, dtype=t.float32)
+    # y_check = t.tensor(y_check, dtype=t.float32)
+    X_check = t.tensor(X_check)
+    y_check = t.tensor(y_check)
     loss = t.nn.MSELoss()
-    lf_model = MLPNetwork(X_lf,y_lf,hidden_layer_size=[10,10,10,10],activation=tnn.Tanh(),learning_rate=0.01, weight_decay=0,loss=loss)
+    lf_model = MLPNetwork(X_lf,y_lf,hidden_layer_size=[10,10,10],activation=tnn.Tanh(),learning_rate=0.001, weight_decay=0,loss=loss)
     #error_history = lf_model.train()
 
     # Plot the results
@@ -471,7 +482,7 @@ def TestFunctionMFSNN():
     X_hf = t.tensor(X_hf, dtype=t.float32)
     y_hf = t.tensor(y_hf, dtype=t.float32)
 
-    mfnn_model = MultiFidelityNN(X_lf, y_lf, X_hf, y_hf, lf_nn_dim=[20,20], hf_linear_nn_dim=[10], hf_nl_nn_dim= [10,10],lr_lf=0.2,wd_lf=0.000001,lr_mf=0.1, wd_mf=0.01)
+    mfnn_model = MultiFidelityNN(X_lf, y_lf, X_hf, y_hf, lf_nn_dim=[20,20], hf_linear_nn_dim=[10], hf_nl_nn_dim= [10,10],lr_lf=0.001,wd_lf=0,lr_mf=0.01, wd_mf=0)
 
     #mfnn_model.high_fidelity_nn.visual_graph()
 
@@ -511,4 +522,4 @@ def Test2DFunction():
     nn_2d = MLPNetwork(X_in,Y_in)
     Y_star = nn_2d.evaluate(X_in)
 
-TestFunctionMLP()
+TestFunctionMFSNN()
