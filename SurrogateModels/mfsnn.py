@@ -482,7 +482,7 @@ def TestFunctionMFSNN():
     X_hf = t.tensor(X_hf, dtype=t.float32)
     y_hf = t.tensor(y_hf, dtype=t.float32)
 
-    mfnn_model = MultiFidelityNN(X_lf, y_lf, X_hf, y_hf, lf_nn_dim=[20,20], hf_linear_nn_dim=[10], hf_nl_nn_dim= [10,10],lr_lf=0.001,wd_lf=0,lr_mf=0.01, wd_mf=0)
+    mfnn_model = MultiFidelityNN(X_lf, y_lf, X_hf, y_hf, lf_nn_dim=[20,20], hf_linear_nn_dim=[10], hf_nl_nn_dim= [10,10],lr_lf=0.0001,wd_lf=0,lr_mf=0.001, wd_mf=0)
 
     #mfnn_model.high_fidelity_nn.visual_graph()
 
