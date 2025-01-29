@@ -522,4 +522,4 @@ def Test2DFunction():
     nn_2d = MLPNetwork(X_in,Y_in)
     Y_star = nn_2d.evaluate(X_in)
 
-TestFunctionMFSNN()
+#TestFunctionMFSNN()
