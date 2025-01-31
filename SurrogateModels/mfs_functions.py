@@ -22,6 +22,10 @@ class expensive_fxn(model.Model):
             y_samp = np.where(Xin<0.5,\
                               2*discontinuous_fxn(Xin)-20*Xin+20,\
                                 4+2*discontinuous_fxn(Xin)-20*Xin+20)
+        elif self.fxn_ind == 7:
+            y_samp = (Xin - 1.414213)*np.square(periodic_fxn(Xin))
+        elif self.fxn_ind == 8:
+            y_samp = np.square(Xin) + np.square(np.sin(8*np.pi*Xin + (np.pi/10)))
         else:
             print('invalid function index')
         return y_samp
@@ -66,6 +70,10 @@ class cheap_fxn(model.Model):
         # Discontinuous function
         elif self.fxn_ind == 6:
            y_samp = discontinuous_fxn(Xin)
+        elif self.fxn_ind == 7:
+            y_samp = periodic_fxn(Xin)
+        elif self.fxn_ind == 8:
+            y_samp = periodic_fxn(Xin)
         else:
             print('invalid function index')
         return y_samp
@@ -114,7 +122,14 @@ def function_bounds(fxn_ind):
         dim = 1
         xmin = 0
         xmax = 1
-    
+    elif fxn_ind == 7:
+        dim = 1
+        xmin = 0
+        xmax = 1
+    elif fxn_ind == 8:
+        dim = 1
+        xmin = 0
+        xmax = 1
     return dim,xmin,xmax
 
 def discontinuous_fxn(Xin):
@@ -123,3 +138,5 @@ def discontinuous_fxn(Xin):
                         (3+0.5*(6*Xin-2)**2*np.sin(12*Xin-4)+10*(Xin-0.5)-5))
     return y_samp
 
+def periodic_fxn(Xin):
+    return np.sin(8*np.pi*Xin)

@@ -22,12 +22,12 @@ import data_handler
 # Class for a linear network of variable shape for regression purposes
 class MLPNetwork(t.nn.Module, model.Model):
     def __init__(self, X, y, hidden_layer_size = [10,8], activation = tnn.ReLU(), loss = t.nn.MSELoss(), 
-                    learning_rate=0.001, weight_decay=0.001,batch_size=30, weight_file="network_weights", load_weights=False, write_weights=False, train=True):
+                    learning_rate=0.001, weight_decay=0.001,batch_size=80, weight_file="network_weights", load_weights=False, write_weights=False, train=True):
         t.nn.Module.__init__(self)
         model.Model.__init__(self,X,y)
 
         # Hyper parameters
-        self.epochs = 50        
+        self.epochs = 200        
 
         # Report rate
         self.report_steps = 1
@@ -69,7 +69,7 @@ class MLPNetwork(t.nn.Module, model.Model):
         # Apply initial weights
         #self.apply(self.init_weights)
         # Set the optimizer
-        self.optimizer = t.optim.LBFGS(self.parameters(), lr = learning_rate, max_iter=400)#, weight_decay = weight_decay)
+        self.optimizer = t.optim.LBFGS(self.parameters(), lr = learning_rate, max_iter=40)#, weight_decay = weight_decay)
 
         # Try loading weights from file
         if load_weights:
@@ -184,7 +184,7 @@ class CompositeNN(tnn.Module, mf_model.MFModel):
         model.Model.__init__(self,X,y)
 
         # Hyper parameters
-        self.epochs = 50        
+        self.epochs = 100        
 
         # Report rate
         self.report_steps = 1
@@ -247,7 +247,7 @@ class CompositeNN(tnn.Module, mf_model.MFModel):
         # Check whether the network is just being setup or if traing is specified
         if train:
             # Set the optimizer and parameters
-            self.optimizer = t.optim.LBFGS(self.parameters(), lr = learning_rate, max_iter=400)
+            self.optimizer = t.optim.LBFGS(self.parameters(), lr = learning_rate, max_iter=40)
 
             # Run training on network
             self.training_error = self.train()        
