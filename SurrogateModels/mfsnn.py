@@ -27,7 +27,7 @@ class MLPNetwork(t.nn.Module, model.Model):
         model.Model.__init__(self,X,y)
 
         # Hyper parameters
-        self.epochs = 200        
+        self.epochs = 500        
 
         # Report rate
         self.report_steps = 1
@@ -48,7 +48,6 @@ class MLPNetwork(t.nn.Module, model.Model):
         # Generate the neural network
         __, input_size = X.shape
         __, output_size = y.shape
-        #self.mlp_network = MLPNetwork(input_size, output_size, hidden_layer_size, activation)
 
         # Setup network shape
         nn_layers = []
@@ -69,7 +68,7 @@ class MLPNetwork(t.nn.Module, model.Model):
         # Apply initial weights
         #self.apply(self.init_weights)
         # Set the optimizer
-        self.optimizer = t.optim.LBFGS(self.parameters(), lr = learning_rate, max_iter=40)#, weight_decay = weight_decay)
+        self.optimizer = t.optim.LBFGS(self.parameters(), lr = learning_rate, max_iter=50)#, weight_decay = weight_decay)
 
         # Try loading weights from file
         if load_weights:
