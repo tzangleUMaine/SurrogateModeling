@@ -183,7 +183,7 @@ class CompositeNN(tnn.Module, mf_model.MFModel):
         model.Model.__init__(self,X,y)
 
         # Hyper parameters
-        self.epochs = 100        
+        self.epochs = 1000        
 
         # Report rate
         self.report_steps = 1
@@ -240,19 +240,20 @@ class CompositeNN(tnn.Module, mf_model.MFModel):
         self.apply(self.init_weights)
 
         # Set weight for composite network combination
-        #self.alpha = tnn.parameter.Parameter(t.tensor([0.99]))
-        self.alpha = 0.999
+        self.alpha = tnn.parameter.Parameter(t.tensor([0.001]))
+        #self.alpha = 0.999
 
         # Check whether the network is just being setup or if traing is specified
         if train:
             # Set the optimizer and parameters
-            self.optimizer = t.optim.LBFGS(self.parameters(), lr = learning_rate, max_iter=40)
+            #self.optimizer = t.optim.LBFGS(self.parameters(), lr = learning_rate, max_iter=40)
+            self.optimizer = t.optim.Adam(self.parameters(),lr=learning_rate,weight_decay=weight_decay)
 
             # Run training on network
             self.training_error = self.train()        
     
     def forward(self, x):
-        return self.alpha * self._layers_linear(x) + (1.0-self.alpha) * self._nl_layers(x)
+        return (1.0-self.alpha) * self._layers_linear(x) +  (self.alpha) * self._nl_layers(x)
 
     # Evaluate function defines method for use in generic model class
     def evaluate(self,x_in):
@@ -327,7 +328,8 @@ class CompositeNN(tnn.Module, mf_model.MFModel):
             train_error_history.append(train_error)
 
         return train_error_history       
-    
+    # def loss_function(self,weight_decay = 0.001):
+    #     return 
     
     # Plots errors output from training to show path to parameters
     def plot_training_error(self, name):
