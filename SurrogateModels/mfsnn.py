@@ -21,13 +21,13 @@ import data_handler
 
 # Class for a linear network of variable shape for regression purposes
 class MLPNetwork(t.nn.Module, model.Model):
-    def __init__(self, X, y, hidden_layer_size = [10,8], activation = tnn.ReLU(), loss = t.nn.MSELoss(), 
+    def __init__(self, X, y, hidden_layer_size = [10,8], activation = tnn.ReLU(), loss = t.nn.MSELoss(), epochs=500,
                     learning_rate=0.001, weight_decay=0.001,batch_size=80, weight_file="network_weights", load_weights=False, write_weights=False, train=True):
         t.nn.Module.__init__(self)
         model.Model.__init__(self,X,y)
 
         # Hyper parameters
-        self.epochs = 500        
+        self.epochs = epochs        
 
         # Report rate
         self.report_steps = 1
@@ -178,12 +178,12 @@ class MLPNetwork(t.nn.Module, model.Model):
 # Explicitly seperates the network into a linear and non-linear network.
 # Fully connected NN architecture in both cases is concatenated at the final layer
 class CompositeNN(tnn.Module, mf_model.MFModel):
-    def __init__(self, X, y, layers_nl = [10,8], layers_linear = [10,10], activation_nl = tnn.Tanh(), loss = t.nn.MSELoss(), learning_rate=0.001, weight_decay=0.001, batch_size=10, train=True):
+    def __init__(self, X, y, layers_nl = [10,8], layers_linear = [10,10], activation_nl = tnn.Tanh(), loss = t.nn.MSELoss(), epochs=1000, learning_rate=0.001, weight_decay=0.001, batch_size=10, train=True):
         t.nn.Module.__init__(self)
         model.Model.__init__(self,X,y)
 
         # Hyper parameters
-        self.epochs = 1000        
+        self.epochs = epochs        
 
         # Report rate
         self.report_steps = 1
@@ -247,7 +247,7 @@ class CompositeNN(tnn.Module, mf_model.MFModel):
         if train:
             # Set the optimizer and parameters
             #self.optimizer = t.optim.LBFGS(self.parameters(), lr = learning_rate, max_iter=40)
-            self.optimizer = t.optim.Adam(self.parameters(),lr=learning_rate,weight_decay=weight_decay)
+            self.optimizer = t.optim.AdamW(self.parameters(),lr=learning_rate,weight_decay=weight_decay)
 
             # Run training on network
             self.training_error = self.train()        
@@ -352,20 +352,20 @@ class CompositeNN(tnn.Module, mf_model.MFModel):
 # All nn dimensions are given as the size of the hidden layers.
 # Input and output size are given by the x and y data
 class MultiFidelityNN(tnn.Module,mf_model.MFModel):
-    def __init__(self, x_lf, y_lf, x_hf, y_hf, lf_nn_dim, hf_linear_nn_dim, hf_nl_nn_dim, load_lf_from_file = False, lr_lf = 0.005, wd_lf = 0.000001, lr_mf = 0.001, wd_mf = 0.001):
+    def __init__(self, x_lf, y_lf, x_hf, y_hf, lf_nn_dim, hf_linear_nn_dim, hf_nl_nn_dim, load_lf_from_file = False, epochs_lf=500, epochs_mf=1000, lr_lf = 0.005, wd_lf = 0.000001, lr_mf = 0.001, wd_mf = 0.001):
         # Populate the multi-fidelity model data
         tnn.Module.__init__(self)
         mf_model.MFModel.__init__(self,x_lf, y_lf, x_hf, y_hf)
 
         # Generate a NN model of the lf model data
-        self.low_fidelity_nn = MLPNetwork(x_lf, y_lf,hidden_layer_size=lf_nn_dim,activation=tnn.Tanh(), train=True)
+        self.low_fidelity_nn = MLPNetwork(x_lf, y_lf,hidden_layer_size=lf_nn_dim,activation=tnn.Tanh(),epochs=epochs_lf, learning_rate=lr_lf, train=True)
 
         # Create lf approximations of the high fidelity data using the lf model
         yhat_lf = self.low_fidelity_nn.evaluate(x_hf)
         x_hf_prime = t.cat((yhat_lf,x_hf),dim=1)
         
         # Train composite NN
-        self.high_fidelity_nn = CompositeNN(x_hf_prime, y_hf, layers_nl=hf_nl_nn_dim, layers_linear=hf_linear_nn_dim, activation_nl=tnn.Tanh(), train=True)
+        self.high_fidelity_nn = CompositeNN(x_hf_prime, y_hf, layers_nl=hf_nl_nn_dim, layers_linear=hf_linear_nn_dim, epochs=epochs_mf, learning_rate=lr_mf, weight_decay=wd_mf, activation_nl=tnn.Tanh(), train=True)
 
     def evaluate(self,x):
         return self.forward(x)
