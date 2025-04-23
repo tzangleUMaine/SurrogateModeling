@@ -2,6 +2,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import model
 import scipy.optimize
+import scipy.linalg
 import typing
 
 
@@ -21,6 +22,7 @@ class Kriging(model.Model):
         self.pre_psi = self.calculate_pre_psi_matrix()
 
         self.theta = self.calculate_hyper_params()
+        print(self.theta)
 
         self.psi, self.inv_psi = self.calculate_psi_matrix(self.theta)
 
@@ -33,6 +35,7 @@ class Kriging(model.Model):
     def calculate_hyper_params(self):
         fun = lambda theta: (-self.calculate_mle(theta))
         theta0 = np.ones((self.d, 1), dtype=float)
+        theta0 = theta0 * 40
         theta_opt = scipy.optimize.fmin(fun, theta0)
         return theta_opt
 
@@ -67,12 +70,44 @@ class Kriging(model.Model):
         inv_psi = np.linalg.inv(psi)
         return psi, inv_psi
 
+    def plot_MLE(self):
+        theta = np.linspace(1.0, 20.0, 1000)
+        mle = np.linspace(1.0, 20.0, 1000)
+        sigma = np.linspace(1.0, 20.0, 1000)
+        det = np.linspace(1.0, 20.0, 1000)
+        for i, val in enumerate(theta):
+            mle[i], sigma[i], det[i] = self.calculate_mle2(val)
+        plt.figure("sigma")
+        plt.title("sigma")
+        plt.plot(theta, sigma)
+        plt.xlabel("theta")
+        plt.ylabel("sigma")
+
+        plt.figure("det")
+        plt.title("det")
+        plt.plot(theta, det)
+        plt.xlabel("det")
+        plt.ylabel("mle")
+
+        plt.figure("mle graph")
+        plt.title("mle graph")
+        plt.plot(theta, mle)
+        plt.xlabel("theta")
+        plt.ylabel("mle")
+
     def calculate_mle(self, theta):
         psi, inv_psi = self.calculate_psi_matrix(theta)
         mu_hat = self.calculate_kriging_mean(inv_psi)
         sigma = self.calculate_sigma(inv_psi, mu_hat)
         mle = -0.5 * (self.n * np.log(sigma) + np.log(np.linalg.det(psi)))
         return mle
+
+    def calculate_mle2(self, theta):
+        psi, inv_psi = self.calculate_psi_matrix(theta)
+        mu_hat = self.calculate_kriging_mean(inv_psi)
+        sigma = self.calculate_sigma(inv_psi, mu_hat)
+        mle = -0.5 * (self.n * np.log(sigma) + np.log(np.linalg.det(psi)))
+        return mle, sigma, np.linalg.det(psi)
 
     def evaluate(self, x_new):
         F = np.ones((self.n, 1))
