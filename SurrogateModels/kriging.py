@@ -2,10 +2,13 @@ import numpy as np
 import matplotlib.pyplot as plt
 import model
 import scipy.optimize
+import typing
 
 
 class Kriging(model.Model):
-    def __init__(self, x_mat, y_vec, nugget=0.0):
+    def __init__(
+        self, x_mat: np.ndarray[float], y_vec: np.ndarray[float], nugget: float = 0.0
+    ):
 
         super().__init__(x_mat, y_vec)
 
@@ -78,6 +81,12 @@ class Kriging(model.Model):
         y_pred = y_pred * self.b
         sum_y = np.sum(y_pred)
         return np.sum(y_pred) + self.mu
+
+    def print_model_params(self, filename: str):
+
+        np.savetxt(filename + "prepsi", self.pre_psi, delimiter=",")
+        np.savetxt(filename + "psi", self.psi, delimiter=",")
+        np.savetxt(filename + "inv_psi", self.inv_psi, delimiter=",")
 
 
 class DiffKriging(Kriging):
