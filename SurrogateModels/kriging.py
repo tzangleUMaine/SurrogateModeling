@@ -65,6 +65,8 @@ class Kriging(model.Model):
 
     def calculate_psi_matrix(self, theta):
         psi = np.exp(-theta * self.pre_psi)
+        # Add a constant term to the matrix diagonal to increase stability
+        psi += np.eye(self.n) * 1e-6
         if self.nugget:
             psi = psi + np.ones((self.n, self.n)) * (self.nugget)
         inv_psi = np.linalg.inv(psi)

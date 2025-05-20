@@ -112,7 +112,7 @@ class MLPNetwork(torch.nn.Module, model.Model):
 
     # Evaluate function defines method for use in generic model class
     def evaluate(self, x_in):
-        with t.no_grad():
+        with torch.no_grad():
             return self.datahandler.unscale(self.forward(x_in))
 
     # Calculates the training error using the given loss function
@@ -121,7 +121,7 @@ class MLPNetwork(torch.nn.Module, model.Model):
         training_size = len(self.training_dataloader.dataset)
         train_error = 0
 
-        with t.no_grad():
+        with torch.no_grad():
             for X, y in self.training_dataloader:
                 X = X.to(device)
                 y = y.to(device)
@@ -273,7 +273,7 @@ class CompositeNN(torch.nn.Module, mf_model.MFModel):
         self.apply(self.init_weights)
 
         # Set weight for composite network combination
-        self.alpha = torch.nn.parameter.Parameter(t.tensor([0.001]))
+        self.alpha = torch.nn.parameter.Parameter(torch.tensor([0.001]))
         # self.alpha = 0.999
 
         # Check whether the network is just being setup or if traing is specified
@@ -432,7 +432,7 @@ class MultiFidelityNN(torch.nn.Module, mf_model.MFModel):
 
         # Create lf approximations of the high fidelity data using the lf model
         yhat_lf = self.low_fidelity_nn.evaluate(x_hf)
-        x_hf_prime = t.cat((yhat_lf, x_hf), dim=1)
+        x_hf_prime = torch.cat((yhat_lf, x_hf), dim=1)
 
         # Train composite NN
         self.high_fidelity_nn = CompositeNN(
@@ -452,7 +452,7 @@ class MultiFidelityNN(torch.nn.Module, mf_model.MFModel):
 
     def forward(self, x):
         yhat_lf = self.low_fidelity_nn.evaluate(x)
-        x_hf = torch.cat((yhat_lf, x), dim=1)
+        x_hf = torch.cat((yhat_lf, x), dim=0)
         yhat_hf = self.high_fidelity_nn.evaluate(x_hf)
         return yhat_hf
 
@@ -540,22 +540,22 @@ def TestFunctionMLP():
     y_lf = lf_fxn.evaluate(X_lf)
     # X_lf = t.tensor(X_lf, dtype=t.float32)
     # y_lf = t.tensor(y_lf, dtype=t.float32)
-    X_lf = t.tensor(X_lf)
-    y_lf = t.tensor(y_lf)
+    X_lf = torch.tensor(X_lf)
+    y_lf = torch.tensor(y_lf)
 
     X_check = np.zeros([300, 1])
     X_check[:, 0] = np.linspace(0, 1.0, 300, endpoint=True)
     y_check = lf_fxn.evaluate(X_check)
     # X_check = t.tensor(X_check, dtype=t.float32)
     # y_check = t.tensor(y_check, dtype=t.float32)
-    X_check = t.tensor(X_check)
-    y_check = t.tensor(y_check)
-    loss = t.nn.MSELoss()
+    X_check = torch.tensor(X_check)
+    y_check = torch.tensor(y_check)
+    loss = torch.nn.MSELoss()
     lf_model = MLPNetwork(
         X_lf,
         y_lf,
         hidden_layer_size=[10, 10, 10],
-        activation=tnn.Tanh(),
+        activation=torch.nn.Tanh(),
         learning_rate=0.001,
         weight_decay=0,
         loss=loss,
@@ -581,15 +581,15 @@ def TestFunctionMFSNN():
     X_lf = np.zeros([lf_samp, 1])
     X_lf[:, 0] = np.linspace(0.0, 1.0, lf_samp, endpoint=True)
     y_lf = lf_fxn.evaluate(X_lf)
-    X_lf = t.tensor(X_lf, dtype=t.float32)
-    y_lf = t.tensor(y_lf, dtype=t.float32)
+    X_lf = torch.tensor(X_lf, dtype=torch.float32)
+    y_lf = torch.tensor(y_lf, dtype=torch.float32)
 
     hf_samp = 4
     X_hf = np.zeros([hf_samp, 1])
     X_hf[:, 0] = np.linspace(0.0, 1.0, hf_samp, endpoint=True)
     y_hf = hf_fxn.evaluate(X_hf)
-    X_hf = t.tensor(X_hf, dtype=t.float32)
-    y_hf = t.tensor(y_hf, dtype=t.float32)
+    X_hf = torch.tensor(X_hf, dtype=torch.float32)
+    y_hf = torch.tensor(y_hf, dtype=torch.float32)
 
     mfnn_model = MultiFidelityNN(
         X_lf,
@@ -639,8 +639,8 @@ def Test2DFunction():
     # ax = plt.figure().add_subplot(projection='3d')
     # ax.scatter(X_in[:,0],X_in[:,1],Y_in[:,0],marker='o')
     # plt.show()
-    X_in = t.tensor(X_in, dtype=t.float32)
-    Y_in = t.tensor(Y_in, dtype=t.float32)
+    X_in = torch.tensor(X_in, dtype=torch.float32)
+    Y_in = torch.tensor(Y_in, dtype=torch.float32)
     nn_2d = MLPNetwork(X_in, Y_in)
     Y_star = nn_2d.evaluate(X_in)
 
