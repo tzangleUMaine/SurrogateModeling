@@ -97,7 +97,7 @@ class MLPNetwork(torch.nn.Module, model.Model):
             self.training_error = self.train()
 
         if write_weights:
-            t.save(self.state_dict(), weight_file)
+            torch.save(self.state_dict(), weight_file)
 
     # Helper function to initialize weights
     def init_weights(self, m):
@@ -113,7 +113,7 @@ class MLPNetwork(torch.nn.Module, model.Model):
     # Evaluate function defines method for use in generic model class
     def evaluate(self, x_in):
         with torch.no_grad():
-            return self.datahandler.unscale(self.forward(x_in))
+            return self.forward(x_in)
 
     # Calculates the training error using the given loss function
     def training_accuracy(self, device=DEVICE):
@@ -230,8 +230,8 @@ class CompositeNN(torch.nn.Module, mf_model.MFModel):
         self.batch_size = batch_size
 
         # Normalize the y data
-        self.datahandler = data_handler.DataHandler(y)
-        y = self.datahandler.scale(y)
+        # self.datahandler = data_handler.DataHandler(y)
+        # y = self.datahandler.scale(y)
 
         # Store the model data
         self.training_dataloader = DataLoader(
@@ -295,7 +295,7 @@ class CompositeNN(torch.nn.Module, mf_model.MFModel):
     # Evaluate function defines method for use in generic model class
     def evaluate(self, x_in):
         with torch.no_grad():
-            return self.datahandler.unscale(self.forward(x_in))
+            return self.forward(x_in)
 
     # Calculates the training error using the given loss function
     def training_accuracy(self, device=DEVICE):
@@ -463,39 +463,6 @@ class MultiFidelityNN(torch.nn.Module, mf_model.MFModel):
         yhat_hf = self.high_fidelity_nn.evaluate(x_hf)
         return yhat_hf, yhat_lf
 
-    # def loss(self, yl_hat, yl, y_hat, y):
-    #     t.nn.MSELoss(yl_hat, yl)
-    #     return 0
-
-    # Train uses backpropogation to solve for the model parameters
-    # def train(self, device=DEVICE):
-    #     self.to(device)
-    #     train_error_history = []
-    #     for t in range(self.epochs):
-    #         # Train loop
-    #         for X, y in self.training_dataloader:
-    #             X = X.to(device)
-    #             y = y.to(device)
-
-    #             #Compute prediction and loss
-    #             pred = self.forward(X)
-    #             loss_t = self.loss(pred, y)
-
-    #             # Backpropagation
-    #             self.optimizer.zero_grad()
-    #             loss_t.backward()
-
-    #             self.optimizer.step()
-
-    #         train_error = self.training_accuracy()
-    #         if t%self.report_steps==0:
-    #             print(f"----Progress Update----")
-    #             print(f"Epoch: {t} \n")
-    #             print(f"Training Error: {train_error} \n")
-    #         train_error_history.append(train_error)
-
-    #     return train_error_history
-
     def generate_plots(self):
         self.plot_data()
 
@@ -611,7 +578,7 @@ def TestFunctionMFSNN():
     mfnn_model.plot_data("MF Model")
     X_check = np.zeros([300, 1])
     X_check[:, 0] = np.linspace(0, 1.0, 300, endpoint=True)
-    X_check = t.tensor(X_check, dtype=t.float32)
+    X_check = torch.tensor(X_check, dtype=t.float32)
     mfnn_model.plot_model(X_check, "MF Model", color="blue", label="MFNN")
     mfnn_model.low_fidelity_nn.plot_model(X_check, name="MF Model", label="LFNN")
     hf_fxn.plot_data(name="MF Model", color="blue", label="HF Fxn", linestyle="dashed")
