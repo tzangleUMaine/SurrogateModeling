@@ -17,8 +17,6 @@ import data_handler
 
 TensorFunc = typing.Callable[[torch.Tensor], torch.Tensor]
 
-__all__ = ("MLP", "HFNN", "CompositeNN")
-
 
 class MLPNetwork(torch.nn.Module, model.Model):
     """Fully connected neural network class"""
@@ -27,6 +25,8 @@ class MLPNetwork(torch.nn.Module, model.Model):
         self,
         X: torch.Tensor,
         y: torch.Tensor,
+        X_test: torch.Tensor = torch.Tensor(),
+        y_test: torch.Tensor = torch.Tensor(),
         hidden_layer_size: list[int] = [10, 8],
         activation: type[torch.nn.Module] = torch.nn.Tanh,
         loss: torch.optim.Optimizer = torch.nn.MSELoss(),
@@ -63,6 +63,9 @@ class MLPNetwork(torch.nn.Module, model.Model):
             list(zip(X, y)), shuffle=True, batch_size=self.batch_size
         )
 
+        # Store the test data
+        self.test_dataloader = DataLoader(list(zip(X_test, y_test)), shuffle=False)
+
         # Generate the neural network
         __, input_size = X.shape
         __, output_size = y.shape
@@ -90,11 +93,11 @@ class MLPNetwork(torch.nn.Module, model.Model):
             self.parameters(), lr=learning_rate, max_iter=50
         )  # , weight_decay = weight_decay)
 
-        # Try loading weights from file
+        # Try loading weights from file, if not train the network!
         if load_weights:
             self.load_state_dict(torch.load(weight_file))
         else:
-            self.training_error = self.train()
+            self.training_error, self.testing_error = self.train()
 
         if write_weights:
             torch.save(self.state_dict(), weight_file)
@@ -132,10 +135,27 @@ class MLPNetwork(torch.nn.Module, model.Model):
 
         return train_error
 
+    def testing_accuracy(self, device=DEVICE):
+        # Validation loop
+        training_size = len(self.test_dataloader.dataset)
+        train_error = 0.0
+
+        for X, y in self.test_dataloader:
+            X = X.to(device)
+            y = y.to(device)
+            with torch.no_grad():
+                pred = self.forward(X)
+                train_error = self.loss(pred, y)
+
+        train_error /= training_size
+
+        return train_error
+
     # Train uses backpropogation to solve for the model parameters
     def train(self, device=DEVICE):
         self.to(device)
         train_error_history = []
+        test_error_history = []
         for t in range(self.epochs):
             # Train loop
             for X, y in self.training_dataloader:
@@ -155,29 +175,15 @@ class MLPNetwork(torch.nn.Module, model.Model):
                 self.optimizer.step(closure)
 
             train_error = self.training_accuracy()
+            test_error = self.testing_accuracy()
             if t % self.report_steps == 0:
                 print(f"----Progress Update----")
                 print(f"Epoch: {t} \n")
                 print(f"Training Error: {train_error} \n")
             train_error_history.append(train_error)
+            test_error_history.append(test_error)
 
-        return train_error_history
-
-    def validation_accuracy(self, X_valid, y_valid, device=DEVICE):
-
-        valid_dataloader = DataLoader(list(zip(X_valid, y_valid)), shuffle=True)
-        validation_size = len(valid_dataloader.dataset)
-
-        # Validation Loop
-        with t.no_grad():
-            for X, y in self.valid_dataloader:
-                X = X.to(device)
-                y = y.to(device)
-                pred = self.evaluate(X)
-                validation_error = self.loss(pred, y)
-
-        validation_error /= validation_size
-        return validation_error
+        return train_error_history, test_error_history
 
     # Plots errors output from training to show path to parameters
     def plot_training_error(self, name):
@@ -188,7 +194,14 @@ class MLPNetwork(torch.nn.Module, model.Model):
             epoch_number,
             self.training_error,
             color="blue",
-            label="Training",
+            label="Train",
+            linestyle="-",
+        )
+        plt.plot(
+            epoch_number,
+            self.testing_error,
+            color="black",
+            label="Test",
             linestyle="-",
         )
         plt.legend()
@@ -204,6 +217,8 @@ class CompositeNN(torch.nn.Module, mf_model.MFModel):
         self,
         X,
         y,
+        X_test=torch.Tensor(),
+        y_test=torch.Tensor(),
         layers_nl=[10, 8],
         layers_linear=[10, 10],
         activation_nl=torch.nn.Tanh(),
@@ -211,7 +226,7 @@ class CompositeNN(torch.nn.Module, mf_model.MFModel):
         epochs=1000,
         learning_rate=0.001,
         weight_decay=0.001,
-        batch_size=10,
+        batch_size=100,
         train=True,
     ):
         torch.nn.Module.__init__(self)
@@ -237,6 +252,9 @@ class CompositeNN(torch.nn.Module, mf_model.MFModel):
         self.training_dataloader = DataLoader(
             list(zip(X, y)), shuffle=True, batch_size=self.batch_size
         )
+
+        # Store the test data
+        self.test_dataloader = DataLoader(list(zip(X_test, y_test)), shuffle=False)
 
         # Generate the neural network
         __, input_size = X.shape
@@ -285,7 +303,7 @@ class CompositeNN(torch.nn.Module, mf_model.MFModel):
             )
 
             # Run training on network
-            self.training_error = self.train()
+            self.training_error, self.testing_error = self.train()
 
     def forward(self, x):
         return (1.0 - self.alpha) * self._layers_linear(x) + (
@@ -301,7 +319,7 @@ class CompositeNN(torch.nn.Module, mf_model.MFModel):
     def training_accuracy(self, device=DEVICE):
         # Validation loop
         training_size = len(self.training_dataloader.dataset)
-        train_error = 0
+        train_error = 0.0
 
         for X, y in self.training_dataloader:
             X = X.to(device)
@@ -314,32 +332,33 @@ class CompositeNN(torch.nn.Module, mf_model.MFModel):
 
         return train_error
 
+    def testing_accuracy(self, device=DEVICE):
+        # Validation loop
+        training_size = len(self.test_dataloader.dataset)
+        test_error = 0.0
+
+        for X, y in self.test_dataloader:
+            X = X.to(device)
+            y = y.to(device)
+            with torch.no_grad():
+                pred = self.forward(X)
+                test_error = self.loss(pred, y)
+
+        test_error /= training_size
+
+        return test_error
+
     # Helper function to initialize weights
     def init_weights(self, m):
         if isinstance(m, torch.nn.Linear):
             torch.nn.init.xavier_uniform_(m.weight)
             m.bias.data.fill_(0.01)
 
-    def validation_accuracy(self, X_valid, y_valid, device=DEVICE):
-
-        valid_dataloader = DataLoader(list(zip(X_valid, y_valid)), shuffle=True)
-        validation_size = len(valid_dataloader.dataset)
-
-        # Validation Loop
-        with torch.no_grad():
-            for X, y in self.valid_dataloader:
-                X = X.to(device)
-                y = y.to(device)
-                pred = self.evaluate(X)
-                validation_error = self.loss(pred, y)
-
-        validation_error /= validation_size
-        return validation_error
-
     # Train uses backpropogation to solve for the model parameters
     def train(self, device=DEVICE):
         self.to(device)
         train_error_history = []
+        test_error_history = []
         for t in range(self.epochs):
             # Train loop
             for X, y in self.training_dataloader:
@@ -359,13 +378,15 @@ class CompositeNN(torch.nn.Module, mf_model.MFModel):
                 self.optimizer.step(closure)
 
             train_error = self.training_accuracy()
+            test_error = self.testing_accuracy()
             if t % self.report_steps == 0:
                 print(f"----Progress Update----")
                 print(f"Epoch: {t} \n")
                 print(f"Training Error: {train_error} \n")
             train_error_history.append(train_error)
+            test_error_history.append(test_error)
 
-        return train_error_history
+        return train_error_history, test_error_history
 
     # def loss_function(self,weight_decay = 0.001):
     #     return
@@ -379,7 +400,14 @@ class CompositeNN(torch.nn.Module, mf_model.MFModel):
             epoch_number,
             self.training_error,
             color="blue",
-            label="Training",
+            label="Train",
+            linestyle="-",
+        )
+        plt.plot(
+            epoch_number,
+            self.testing_error,
+            color="black",
+            label="Test",
             linestyle="-",
         )
         plt.legend()
@@ -402,8 +430,12 @@ class MultiFidelityNN(torch.nn.Module, mf_model.MFModel):
         self,
         x_lf,
         y_lf,
+        X_lf_test,
+        y_lf_test,
         x_hf,
         y_hf,
+        X_hf_test,
+        y_hf_test,
         lf_nn_dim,
         hf_linear_nn_dim,
         hf_nl_nn_dim,
@@ -423,6 +455,8 @@ class MultiFidelityNN(torch.nn.Module, mf_model.MFModel):
         self.low_fidelity_nn = MLPNetwork(
             x_lf,
             y_lf,
+            X_test=X_lf_test,
+            y_test=y_lf_test,
             hidden_layer_size=lf_nn_dim,
             activation=torch.nn.Tanh(),
             epochs=epochs_lf,
@@ -438,6 +472,8 @@ class MultiFidelityNN(torch.nn.Module, mf_model.MFModel):
         self.high_fidelity_nn = CompositeNN(
             x_hf_prime,
             y_hf,
+            X_test=X_hf_test,
+            y_test=y_hf_test,
             layers_nl=hf_nl_nn_dim,
             layers_linear=hf_linear_nn_dim,
             epochs=epochs_mf,
