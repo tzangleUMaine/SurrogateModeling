@@ -291,7 +291,7 @@ class CompositeNN(torch.nn.Module, mf_model.MFModel):
         self.apply(self.init_weights)
 
         # Set weight for composite network combination
-        self.alpha = torch.nn.parameter.Parameter(torch.tensor([0.001]))
+        self.alpha = torch.nn.parameter.Parameter(torch.tensor([0.0001]))
         # self.alpha = 0.999
 
         # Check whether the network is just being setup or if traing is specified
@@ -326,7 +326,7 @@ class CompositeNN(torch.nn.Module, mf_model.MFModel):
             y = y.to(device)
             with torch.no_grad():
                 pred = self.forward(X)
-                train_error = self.loss(pred, y)
+                train_error = train_error + self.loss(pred, y)
 
         train_error /= training_size
 
@@ -342,7 +342,7 @@ class CompositeNN(torch.nn.Module, mf_model.MFModel):
             y = y.to(device)
             with torch.no_grad():
                 pred = self.forward(X)
-                test_error = self.loss(pred, y)
+                test_error = test_error + self.loss(pred, y)
 
         test_error /= training_size
 
@@ -439,7 +439,6 @@ class MultiFidelityNN(torch.nn.Module, mf_model.MFModel):
         lf_nn_dim,
         hf_linear_nn_dim,
         hf_nl_nn_dim,
-        load_lf_from_file=False,
         epochs_lf=500,
         epochs_mf=1000,
         lr_lf=0.005,
@@ -468,11 +467,15 @@ class MultiFidelityNN(torch.nn.Module, mf_model.MFModel):
         yhat_lf = self.low_fidelity_nn.evaluate(x_hf)
         x_hf_prime = torch.cat((yhat_lf, x_hf), dim=1)
 
+        # Shift the test data
+        yhat_lf_test = self.low_fidelity_nn.evaluate(X_hf_test)
+        x_hf_prime_test = torch.cat((yhat_lf_test, X_hf_test), dim=1)
+
         # Train composite NN
         self.high_fidelity_nn = CompositeNN(
             x_hf_prime,
             y_hf,
-            X_test=X_hf_test,
+            X_test=x_hf_prime_test,
             y_test=y_hf_test,
             layers_nl=hf_nl_nn_dim,
             layers_linear=hf_linear_nn_dim,
