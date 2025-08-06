@@ -1,19 +1,17 @@
 import numpy as np
 import matplotlib.pyplot as plt
-import model
 
 
-class multi_fidelity_functions:
+class MultiFidelityTemplate:
     def __init__(self):
-        self.high_fidelity = None
-        self.low_fidelity = None
         self.bounds = None
         self.dimensions = None
+        self.name = None
 
-    def evaluate_low_fidelity(self, x):
+    def low_fidelity(self, x):
         pass
 
-    def evaluate_high_fidelity(self, x):
+    def high_fidelity(self, x):
         pass
 
     def get_bounds(self):
@@ -22,188 +20,197 @@ class multi_fidelity_functions:
     def get_dimensions(self):
         return self.dimensions
 
+    def plot_high_fidelity_data_1d(
+        self, name="Model", color="black", label="high fidelity fxn", linestyle="solid"
+    ):
+        if self.dimensions != 1:
+            print("Wrong plotting function used for current dimensionality")
+            return
 
-class zhang_example1(multi_fidelity_functions):
-    """Example 1 from 
+        x = np.linspace(self.bounds[0][0], self.bounds[0][1], 300)
+        y = self.high_fidelity(x)
+        plt.figure(name)
+        plt.title(name)
+        plt.plot(x, y, color=color, label=label, linestyle=linestyle)
+        plt.legend()
+        plt.xlabel("x")
+        plt.ylabel("y(x)")
+        return
+
+    def plot_low_fidelity_data_1d(
+        self, name="Model", color="blue", label="low fidelity fxn", linestyle="solid"
+    ):
+        if self.dimensions != 1:
+            print("Wrong plotting function used for current dimensionality")
+            return
+
+        x = np.linspace(self.bounds[0][0], self.bounds[0][1], 300)
+        y = self.low_fidelity(x)
+        plt.figure(name)
+        plt.title(name)
+        plt.plot(x, y, color=color, label=label, linestyle=linestyle)
+        plt.legend()
+        plt.xlabel("x")
+        plt.ylabel("y(x)")
+        return
+
+    def plot_functions_1d(self, name="Model"):
+        self.plot_low_fidelity_data_1d(name=name)
+        self.plot_high_fidelity_data_1d(name=name)
+        return
+
+
+class ZhangExample1(MultiFidelityTemplate):
+    """Example 1 from
     "A multi-fidelity surrogate modeling approach for incorporating multiple
     non-hierarchical low-fidelity data" (2022)   Zhang et al.
 
     Only includes first low fidelity option
 
-    Args:
-        None
     """
+
     def __init__(self):
-        self.high_fidelity = 
-        return x**2
+        self.bounds = [[0, 2 * np.pi]]
+        self.dimensions = 1
+        self.name = "Zhang Example 1"
 
-    def low_fidelity(x):
-        return (0.9) * x**2
+    def high_fidelity(self, x):
+        return np.sin(x)
 
-    def dimensions():
-        return 1
-
-    def bounds():
-        return [[0, 1]]
+    def low_fidelity(self, x):
+        return np.sin(x) + 0.1 * (x - np.pi) ** 2
 
 
-class expensive_fxn(model.Model):
-    def __init__(self, fxn_ind):
-        self.fxn_ind = fxn_ind
+class ForresterExample(MultiFidelityTemplate):
+    """Example 2 from
+    "A multi-fidelity surrogate modeling approach for incorporating multiple
+    non-hierarchical low-fidelity data" (2022)   Zhang et al.
 
-    # Refactor to make this into a dictionary since its gross right now
-    def evaluate(self, Xin):
-        if self.fxn_ind == 1:
-            y_samp = (6 * Xin - 2) ** 2 * np.sin(12 * Xin - 4)
-        elif self.fxn_ind == 2:
-            y_samp = np.sin(2 * np.pi * (Xin - 0.1)) + Xin**2
-        elif self.fxn_ind == 3:
-            y_samp = Xin * np.sin(Xin) / 10
-        elif self.fxn_ind == 4:
-            y_samp = np.cos(3.5 * np.pi * Xin) * np.exp(-1.4 * Xin)
-        elif self.fxn_ind == 5:
-            y_samp = np.zeros((Xin.shape[0], 1))
-            y_samp[:, 0] = (
-                4
-                - 2.1 * Xin[:, 0] ** 4
-                + (1.0 / 3.0) * Xin[:, 0] ** 6
-                + Xin[:, 0] * Xin[:, 1]
-                - 4 * Xin[:, 1] ** 2
-                + 4.0 * Xin[:, 1] ** 4
-            )
-        elif self.fxn_ind == 6:
-            y_samp = np.where(
-                Xin < 0.5,
-                2 * discontinuous_fxn(Xin) - 20 * Xin + 20,
-                4 + 2 * discontinuous_fxn(Xin) - 20 * Xin + 20,
-            )
-        elif self.fxn_ind == 7:
-            y_samp = (Xin - 1.414213) * np.square(periodic_fxn(Xin))
-        elif self.fxn_ind == 8:
-            y_samp = np.square(Xin) + np.square(np.sin(8 * np.pi * Xin + (np.pi / 10)))
-        else:
-            print("invalid function index")
-        return y_samp
+    Matches the example from the Forrester cokriging paper
 
-    def plot_data(self, name="Model", color="black", label="model", linestyle="solid"):
-        # DRAGONS: not setup for higher dimensions
-        dim, xmin, xmax = function_bounds(self.fxn_ind)
-        x_vals = np.linspace(xmin, xmax, 300)
-        y_hat = np.zeros(len(x_vals))
-        for i, x in enumerate(x_vals):
-            y_hat[i] = self.evaluate(x)
-        plt.figure(name)
-        plt.title(name)
-        plt.plot(x_vals, y_hat, color=color, label=label, linestyle=linestyle)
-        plt.legend()
-        plt.xlabel("x")
-        plt.ylabel("y(x)")
+    """
+
+    def __init__(self):
+        self.bounds = [[0, 1]]
+        self.dimensions = 1
+        self.name = "Forrester Example"
+
+    def high_fidelity(self, x):
+        return (6 * x - 2) ** 2 * np.sin(12 * x - 4)
+
+    def low_fidelity(self, x):
+        return 0.5 * self.high_fidelity(x) + 10 * (x - 0.5) - 5
 
 
-# Calculate sample points from the specified "Cheap" test function
-# This function example is from Forrester 2008
-class cheap_fxn(model.Model):
-    def __init__(self, fxn_ind):
-        self.fxn_ind = fxn_ind
+class ZhangExample3(MultiFidelityTemplate):
+    """Example 3 from
+    "A multi-fidelity surrogate modeling approach for incorporating multiple
+    non-hierarchical low-fidelity data" (2022)   Zhang et al.
 
-        # Note: I dont like this
-        self.expensive_fxn = expensive_fxn(fxn_ind)
+    """
 
-    def evaluate(self, Xin):
-        if self.fxn_ind == 1:
-            y_samp = 0.5 * self.expensive_fxn.evaluate(Xin) + 10 * (Xin - 0.5) - 5
-        elif self.fxn_ind == 2:
-            y_samp = np.sin(2 * np.pi * (Xin - 0.1))
-        elif self.fxn_ind == 3:
-            y_samp = Xin * np.sin(Xin) / 10 + Xin / 10
-        elif self.fxn_ind == 4:
-            y_samp = np.cos(3.5 * np.pi * Xin) * np.exp(-1.4 * Xin) + 0.75 * Xin**2
-        elif self.fxn_ind == 5:
-            y_samp = np.zeros(Xin.shape()[0], 1)
-            y_samp[:, 0] = (
-                4
-                - 0.5 * Xin[:, 0] ** 4
-                + (0.04) * Xin[:, 0] ** 6
-                + 0.5 * Xin[:, 0] * Xin[:, 1]
-                - 1.96 * Xin[:, 1] ** 2
-                + 0.96 * Xin[:, 1] ** 4
-            )
-        # Meng Karniadikis functions
-        # Discontinuous function
-        elif self.fxn_ind == 6:
-            y_samp = discontinuous_fxn(Xin)
-        elif self.fxn_ind == 7:
-            y_samp = periodic_fxn(Xin)
-        elif self.fxn_ind == 8:
-            y_samp = periodic_fxn(Xin)
-        else:
-            print("invalid function index")
-        return y_samp
+    def __init__(self):
+        self.bounds = [[0, 10]]
+        self.dimensions = 1
+        self.name = "Zhang Example 3"
 
-    def plot_data(self, name="Model", color="black", label="model", linestyle="solid"):
-        # DRAGONS: not setup for higher dimensions
-        dim, xmin, xmax = function_bounds(self.fxn_ind)
-        x_vals = np.linspace(xmin, xmax, 300)
-        y_hat = np.zeros(len(x_vals))
-        for i, x in enumerate(x_vals):
-            y_hat[i] = self.evaluate(x)
-        plt.figure(name)
-        plt.title(name)
-        plt.plot(x_vals, y_hat, color=color, label=label, linestyle=linestyle)
-        plt.legend()
-        plt.xlabel("x")
-        plt.ylabel("y(x)")
+    def high_fidelity(self, x):
+        return np.sin(x) + 0.2 * x + (x - 5) ** 2 / 16 + 0.5
+
+    def low_fidelity(self, x):
+        return (x - 0.5) * (x - 4) * (x - 9) / 20 + 2
 
 
-# Function returns the bounds and input dimensions of the function of interest
-def function_bounds(fxn_ind):
-    if fxn_ind == 1:
-        dim = 1
-        xmin = 0
-        xmax = 1
-    elif fxn_ind == 2:
-        dim = 1
-        xmin = 0
-        xmax = 1
-    elif fxn_ind == 3:
-        dim = 1
-        xmin = 0
-        xmax = 10
-    elif fxn_ind == 4:
-        dim = 1
-        xmin = 0
-        xmax = 1
-    elif fxn_ind == 5:
-        dim = 2
-        xmin = np.zeros((dim, 1))
-        xmax = np.zeros((dim, 1))
-        xmin[0] = -2
-        xmin[1] = -2
-        xmax[0] = 2
-        xmax[1] = 2
-    elif fxn_ind == 6:
-        dim = 1
-        xmin = 0
-        xmax = 1
-    elif fxn_ind == 7:
-        dim = 1
-        xmin = 0
-        xmax = 1
-    elif fxn_ind == 8:
-        dim = 1
-        xmin = 0
-        xmax = 1
-    return dim, xmin, xmax
+class ZhangExample4(MultiFidelityTemplate):
+    """Example 4 from
+    "A multi-fidelity surrogate modeling approach for incorporating multiple
+    non-hierarchical low-fidelity data" (2022)   Zhang et al.
+
+    """
+
+    def __init__(self):
+        self.bounds = [[0, 10]]
+        self.dimensions = 1
+        self.name = "Zhang Example 4"
+
+    def high_fidelity(self, x):
+        return 2 * np.sin(np.pi * x / 5)
+
+    def low_fidelity(self, x):
+        return x * (x - 5) * (x - 12) / 30
 
 
-def discontinuous_fxn(Xin):
-    y_samp = np.where(
-        Xin < 0.5,
-        (0.5 * (6 * Xin - 2) ** 2 * np.sin(12 * Xin - 4) + 10 * (Xin - 0.5) - 5),
-        (3 + 0.5 * (6 * Xin - 2) ** 2 * np.sin(12 * Xin - 4) + 10 * (Xin - 0.5) - 5),
-    )
-    return y_samp
+class MengDiscontinuous(MultiFidelityTemplate):
+    """Example from Meng and Karniadakis 2020 paper
+    "A composite neural network that learns from multi-fidelity data: Application to function approximation and inverse PDE problems"
+
+    Defines the discontinuous example in paper
+    """
+
+    def __init__(self):
+        self.bounds = [[0, 1]]
+        self.dimensions = 1
+        self.name = "Meng Discontinuous"
+
+    def high_fidelity(self, x):
+        return np.where(
+            (x > 0.5),
+            4 + 2 * self.low_fidelity(x) - 20 * x + 20,
+            2 * self.low_fidelity(x) - 20 * x + 20,
+        )
+
+    def low_fidelity(self, x):
+        return np.where(
+            (x > 0.5),
+            3 + 0.5 * (6 * x - 2) ** 2 * np.sin(12 * x - 4) + 10 * (x - 0.5) - 5,
+            0.5 * (6 * x - 2) ** 2 * np.sin(12 * x - 4) + 10 * (x - 0.5) - 5,
+        )
 
 
-def periodic_fxn(Xin):
-    return np.sin(8 * np.pi * Xin)
+class MengNonLinearCorrelation(MultiFidelityTemplate):
+    """Example from Meng and Karniadakis 2020 paper
+    "A composite neural network that learns from multi-fidelity data: Application to function approximation and inverse PDE problems"
+
+    Defines the continuous function with nonlinear correlation between high and low fidelity
+    """
+
+    def __init__(self):
+        self.bounds = [[0, 1]]
+        self.dimensions = 1
+        self.name = "Meng Non-Linear Correlation"
+
+    def high_fidelity(self, x):
+        return (x - np.sqrt(2)) * self.low_fidelity(x) ** 2
+
+    def low_fidelity(self, x):
+        return np.sin(8 * np.pi * x)
+
+
+class MengPhaseShift(MultiFidelityTemplate):
+    """Example from Meng and Karniadakis 2020 paper
+    "A composite neural network that learns from multi-fidelity data: Application to function approximation and inverse PDE problems"
+
+    Defines the phase-shifted oscillations from the paper
+    """
+
+    def __init__(self):
+        self.bounds = [[0, 1]]
+        self.dimensions = 1
+        self.name = "Meng Phase Shifted Oscillations"
+
+    def high_fidelity(self, x):
+        return x**2 + np.sin(8 * np.pi * x + np.pi / 10) ** 2
+
+    def low_fidelity(self, x):
+        return np.sin(8 * np.pi * x)
+
+
+multi_fidelity_functions = {
+    "Zhang Example 1": ZhangExample1,
+    "Zhang Example 3": ZhangExample3,
+    "Zhang Example 4": ZhangExample4,
+    "Forrester Example": ForresterExample,
+    "Meng Discontinuous": MengDiscontinuous,
+    "Meng Non-Linear Correlation": MengNonLinearCorrelation,
+    "Meng Phase Shifted Oscillations": MengPhaseShift,
+}

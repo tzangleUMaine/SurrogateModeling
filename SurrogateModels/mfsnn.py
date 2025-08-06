@@ -67,8 +67,8 @@ class MLPNetwork(torch.nn.Module, model.Model):
         self.test_dataloader = DataLoader(list(zip(X_test, y_test)), shuffle=False)
 
         # Generate the neural network
-        __, input_size = X.shape
-        __, output_size = y.shape
+        _, input_size = X.shape
+        _, output_size = y.shape
 
         # Setup network shape
         nn_layers = []
@@ -92,6 +92,9 @@ class MLPNetwork(torch.nn.Module, model.Model):
         self.optimizer = torch.optim.LBFGS(
             self.parameters(), lr=learning_rate, max_iter=50
         )  # , weight_decay = weight_decay)
+
+        # print(self.weight)
+        print(X)
 
         # Try loading weights from file, if not train the network!
         if load_weights:
@@ -428,11 +431,11 @@ class CompositeNN(torch.nn.Module, mf_model.MFModel):
 class MultiFidelityNN(torch.nn.Module, mf_model.MFModel):
     def __init__(
         self,
-        x_lf,
+        X_lf,
         y_lf,
         X_lf_test,
         y_lf_test,
-        x_hf,
+        X_hf,
         y_hf,
         X_hf_test,
         y_hf_test,
@@ -448,11 +451,11 @@ class MultiFidelityNN(torch.nn.Module, mf_model.MFModel):
     ):
         # Populate the multi-fidelity model data
         torch.nn.Module.__init__(self)
-        mf_model.MFModel.__init__(self, x_lf, y_lf, x_hf, y_hf)
+        mf_model.MFModel.__init__(self, X_lf, y_lf, X_hf, y_hf)
 
         # Generate a NN model of the lf model data
         self.low_fidelity_nn = MLPNetwork(
-            x_lf,
+            X_lf,
             y_lf,
             X_test=X_lf_test,
             y_test=y_lf_test,
@@ -464,8 +467,8 @@ class MultiFidelityNN(torch.nn.Module, mf_model.MFModel):
         )
 
         # Create lf approximations of the high fidelity data using the lf model
-        yhat_lf = self.low_fidelity_nn.evaluate(x_hf)
-        x_hf_prime = torch.cat((yhat_lf, x_hf), dim=1)
+        yhat_lf = self.low_fidelity_nn.evaluate(X_hf)
+        x_hf_prime = torch.cat((yhat_lf, X_hf), dim=1)
 
         # Shift the test data
         yhat_lf_test = self.low_fidelity_nn.evaluate(X_hf_test)
