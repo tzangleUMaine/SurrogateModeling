@@ -44,3 +44,22 @@ class MFModel(model.Model):
         plt.legend()
         plt.xlabel("x")
         plt.ylabel("y(x)")
+
+    def plot_model_error(
+        self,
+        x_vals,
+        ground_truth,
+        name="Model",
+        color="black",
+        label="model",
+        linestyle="solid",
+    ):
+        error = np.zeros(len(x_vals[:, 0]))
+        for i, x in enumerate(x_vals):
+            error[i] = np.sqrt((self.evaluate(x) - ground_truth(x)) ** 2)
+        plt.figure(name)
+        plt.title(name)
+        plt.plot(x_vals, error, color=color, label=label, linestyle=linestyle)
+        plt.legend()
+        plt.xlabel("x")
+        plt.ylabel("y(x)")
