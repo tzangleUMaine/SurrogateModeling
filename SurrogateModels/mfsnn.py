@@ -14,6 +14,7 @@ import mfs_functions
 import mf_model
 import model
 import data_handler
+import csv
 
 TensorFunc = typing.Callable[[torch.Tensor], torch.Tensor]
 
@@ -64,7 +65,9 @@ class MLPNetwork(torch.nn.Module, model.Model):
         )
 
         # Store the test data
-        self.test_dataloader = DataLoader(list(zip(X_test, y_test)), shuffle=False)
+        self.test_dataloader = DataLoader(
+            list(zip(X_test, y_test)), shuffle=False, batch_size=self.batch_size
+        )
 
         # Generate the neural network
         _, input_size = X.shape
@@ -257,7 +260,9 @@ class CompositeNN(torch.nn.Module, mf_model.MFModel):
         )
 
         # Store the test data
-        self.test_dataloader = DataLoader(list(zip(X_test, y_test)), shuffle=False)
+        self.test_dataloader = DataLoader(
+            list(zip(X_test, y_test)), shuffle=False, batch_size=self.batch_size
+        )
 
         # Generate the neural network
         __, input_size = X.shape
@@ -308,6 +313,17 @@ class CompositeNN(torch.nn.Module, mf_model.MFModel):
             # Run training on network
             self.training_error, self.testing_error = self.train()
 
+    # Simple function to create csv files of dataloader to check output distributions
+    def test_dataloader(self, file_name):
+        with open(file_name, "w", newline="") as csvfile:
+            csv_writer = csv.writer(csvfile, delimiter=",", quotechar="|")
+            for X, y in self.training_dataloader:
+                X = X.to(DEVICE)
+                with torch.no_grad():
+                    return
+                    # print(X)
+                    # csv_writer.writerow(X)
+
     def forward(self, x):
         return (1.0 - self.alpha) * self._layers_linear(x) + (
             self.alpha
@@ -328,6 +344,7 @@ class CompositeNN(torch.nn.Module, mf_model.MFModel):
             X = X.to(device)
             y = y.to(device)
             with torch.no_grad():
+                print(X)
                 pred = self.forward(X)
                 train_error = train_error + self.loss(pred, y)
 
