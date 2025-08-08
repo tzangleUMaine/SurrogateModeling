@@ -314,15 +314,15 @@ class CompositeNN(torch.nn.Module, mf_model.MFModel):
             self.training_error, self.testing_error = self.train()
 
     # Simple function to create csv files of dataloader to check output distributions
-    def test_dataloader(self, file_name):
+    def dataloader_write(self, file_name):
         with open(file_name, "w", newline="") as csvfile:
             csv_writer = csv.writer(csvfile, delimiter=",", quotechar="|")
             for X, y in self.training_dataloader:
                 X = X.to(DEVICE)
+                y = y.to(DEVICE)
                 with torch.no_grad():
-                    return
-                    # print(X)
-                    # csv_writer.writerow(X)
+                    print(X[:][1])
+                    csv_writer.writerow(X[:][1])
 
     def forward(self, x):
         return (1.0 - self.alpha) * self._layers_linear(x) + (
