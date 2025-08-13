@@ -311,7 +311,7 @@ class CompositeNN(torch.nn.Module, mf_model.MFModel):
             )
 
             # Run training on network
-            self.training_error, self.testing_error = self.train()
+            self.training_error, self.testing_error, self.alpha_history = self.train()
 
     # Simple function to create csv files of dataloader to check output distributions
     def dataloader_write(self, file_name):
@@ -344,7 +344,6 @@ class CompositeNN(torch.nn.Module, mf_model.MFModel):
             X = X.to(device)
             y = y.to(device)
             with torch.no_grad():
-                print(X)
                 pred = self.forward(X)
                 train_error = train_error + self.loss(pred, y)
 
@@ -379,6 +378,7 @@ class CompositeNN(torch.nn.Module, mf_model.MFModel):
         self.to(device)
         train_error_history = []
         test_error_history = []
+        alpha_history = []
         for t in range(self.epochs):
             # Train loop
             for X, y in self.training_dataloader:
@@ -405,8 +405,9 @@ class CompositeNN(torch.nn.Module, mf_model.MFModel):
                 print(f"Training Error: {train_error} \n")
             train_error_history.append(train_error)
             test_error_history.append(test_error)
+            alpha_history.append(self.alpha.clone().detach().numpy())
 
-        return train_error_history, test_error_history
+        return train_error_history, test_error_history, alpha_history
 
     # def loss_function(self,weight_decay = 0.001):
     #     return
@@ -433,6 +434,23 @@ class CompositeNN(torch.nn.Module, mf_model.MFModel):
         plt.legend()
         plt.xlabel("Epoch")
         plt.ylabel("Error")
+
+        # Plots errors output from training to show path to parameters
+
+    def plot_alpha_history(self, name):
+        epoch_number = np.arange(0, self.epochs, 1)
+        plt.figure(name)
+        plt.title(name)
+        plt.plot(
+            epoch_number,
+            self.alpha_history,
+            color="blue",
+            label="Train",
+            linestyle="-",
+        )
+        plt.legend()
+        plt.xlabel("Epoch")
+        plt.ylabel("Alpha")
 
     # def visual_graph(self):
     #     __, input_size = self.x.shape
