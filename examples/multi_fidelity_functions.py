@@ -140,6 +140,33 @@ class ZhangExample4(MultiFidelityTemplate):
         return x * (x - 5) * (x - 12) / 30
 
 
+class ZhangExample6(MultiFidelityTemplate):
+    """Example 6 from
+    "A multi-fidelity surrogate modeling approach for incorporating multiple
+    non-hierarchical low-fidelity data" (2022)   Zhang et al.
+
+    2D input to function
+    """
+
+    def __init__(self):
+        self.bounds = [[-2.0, 2.0], [-2.0, 2.0]]
+        self.dimensions = 2
+        self.name = "Zhang Example 6"
+
+    def high_fidelity(self, x):
+        return (
+            4 * x[:, 0] ** 2
+            - 2.1 * x[:, 0] ** 4
+            + (x[:, 0] ** 6) / 3
+            + x[:, 0] * x[:, 1]
+            - 4 * x[:, 1] ** 2
+            + 4 * x[:, 1] ** 4
+        )
+
+    def low_fidelity(self, x):
+        return self.high_fidelity(0.7 * x) + x[:, 0] * x[:, 1] - 65
+
+
 class MengDiscontinuous(MultiFidelityTemplate):
     """Example from Meng and Karniadakis 2020 paper
     "A composite neural network that learns from multi-fidelity data: Application to function approximation and inverse PDE problems"
@@ -214,3 +241,18 @@ multi_fidelity_functions = {
     "Meng Non-Linear Correlation": MengNonLinearCorrelation,
     "Meng Phase Shifted Oscillations": MengPhaseShift,
 }
+
+
+def generate_grid(xmin=-2, xmax=2, ymin=-2, ymax=2, num=50):
+    x = np.linspace(xmin, xmax, num)
+    y = np.linspace(ymin, ymax, num)
+    X, Y = np.meshgrid(x, y)
+    return X, Y
+
+
+def generate_grid_array(xmin=-2, xmax=2, ymin=-2, ymax=2, num=50):
+    x = np.linspace(xmin, xmax, num)
+    y = np.linspace(ymin, ymax, num)
+    X, Y = np.meshgrid(x, y)
+    grid = np.column_stack([X.ravel(), Y.ravel()])
+    return grid
