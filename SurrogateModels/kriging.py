@@ -13,16 +13,11 @@ class Kriging(model.Model):
 
         super().__init__(x_mat, y_vec)
 
-        # self.plot_data()
-
         self.nugget = nugget
-
-        self.n, self.d = np.shape(self.x)
 
         self.pre_psi = self.calculate_pre_psi_matrix()
 
         self.theta = self.calculate_hyper_params()
-        print(self.theta)
 
         self.psi, self.inv_psi = self.calculate_psi_matrix(self.theta)
 
@@ -36,6 +31,7 @@ class Kriging(model.Model):
         fun = lambda theta: (-self.calculate_mle(theta))
         theta0 = np.ones((self.d, 1), dtype=float)
         theta0 = theta0 * 40
+        print(self.d)
         theta_opt = scipy.optimize.fmin(fun, theta0)
         return theta_opt
 
@@ -72,6 +68,28 @@ class Kriging(model.Model):
         inv_psi = np.linalg.inv(psi)
         return psi, inv_psi
 
+    def calculate_mle(self, theta):
+        psi, inv_psi = self.calculate_psi_matrix(theta)
+        mu_hat = self.calculate_kriging_mean(inv_psi)
+        sigma = self.calculate_sigma(inv_psi, mu_hat)
+        mle = -0.5 * (self.n * np.log(sigma) + np.log(np.linalg.det(psi)))
+        return mle
+
+    def calculate_mle2(self, theta):
+        psi, inv_psi = self.calculate_psi_matrix(theta)
+        mu_hat = self.calculate_kriging_mean(inv_psi)
+        sigma = self.calculate_sigma(inv_psi, mu_hat)
+        mle = -0.5 * (self.n * np.log(sigma) + np.log(np.linalg.det(psi)))
+        return mle, sigma, np.linalg.det(psi)
+
+    def evaluate(self, x_new):
+        F = np.ones((self.n, 1))
+        x_diff = F * x_new - self.x
+        y_pred = np.exp(-self.theta * (x_diff * x_diff))
+        y_pred = y_pred * self.b
+        sum_y = np.sum(y_pred)
+        return np.sum(y_pred) + self.mu
+
     def plot_MLE(self):
         theta = np.linspace(1.0, 20.0, 1000)
         mle = np.linspace(1.0, 20.0, 1000)
@@ -96,28 +114,6 @@ class Kriging(model.Model):
         plt.plot(theta, mle)
         plt.xlabel("theta")
         plt.ylabel("mle")
-
-    def calculate_mle(self, theta):
-        psi, inv_psi = self.calculate_psi_matrix(theta)
-        mu_hat = self.calculate_kriging_mean(inv_psi)
-        sigma = self.calculate_sigma(inv_psi, mu_hat)
-        mle = -0.5 * (self.n * np.log(sigma) + np.log(np.linalg.det(psi)))
-        return mle
-
-    def calculate_mle2(self, theta):
-        psi, inv_psi = self.calculate_psi_matrix(theta)
-        mu_hat = self.calculate_kriging_mean(inv_psi)
-        sigma = self.calculate_sigma(inv_psi, mu_hat)
-        mle = -0.5 * (self.n * np.log(sigma) + np.log(np.linalg.det(psi)))
-        return mle, sigma, np.linalg.det(psi)
-
-    def evaluate(self, x_new):
-        F = np.ones((self.n, 1))
-        x_diff = F * x_new - self.x
-        y_pred = np.exp(-self.theta * (x_diff * x_diff))
-        y_pred = y_pred * self.b
-        sum_y = np.sum(y_pred)
-        return np.sum(y_pred) + self.mu
 
     def print_model_params(self, filename: str):
 
@@ -192,10 +188,3 @@ class DiffKriging(Kriging):
         sigma = self.calculate_sigma(inv_psi, mu_hat)
         mle = -0.5 * (self.n * np.log(sigma) + np.log(np.linalg.det(psi)))
         return mle
-
-
-def near_zero_fix(array):
-    for val in array:
-        if val < 1e-3:
-            val = 1e-3
-    return array
