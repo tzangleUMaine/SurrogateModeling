@@ -34,9 +34,7 @@ class Model:
         self, x_vals, name="Model", color="black", label="model", linestyle="solid"
     ):
         if self.d == 1:
-            y_hat = np.zeros(len(self.n))
-            for i, x in enumerate(x_vals):
-                y_hat[i] = self.evaluate(x)
+            y_hat = self.evaluate(x_vals)
             plt.figure(name)
             plt.title(name)
             plt.plot(x_vals, y_hat, color=color, label=label, linestyle=linestyle)
@@ -44,19 +42,10 @@ class Model:
             plt.xlabel("x")
             plt.ylabel("y(x)")
         if self.d == 2:
-            y_hat = np.zeros(self.n)
-            for i, x in enumerate(x_vals):
-                y_hat[i] = self.evaluate(x)
+            y_hat = self.evaluate(x_vals)
             plt.figure(name, projection="3d")
             plt.title(name)
-            plt.scatter(
-                x_vals[:, 0],
-                x_vals[:, 1],
-                y_hat,
-                color=color,
-                label=label,
-                linestyle=linestyle,
-            )
+            plt.scatter(x_vals[:, 0], x_vals[:, 1], y_hat, color=color, label=label)
             plt.legend()
             plt.xlabel("x0")
             plt.ylabel("x1")

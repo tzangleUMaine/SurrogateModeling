@@ -8,18 +8,16 @@ import typing
 
 class Kriging(model.Model):
     def __init__(
-        self, x_mat: np.ndarray[float], y_vec: np.ndarray[float], nugget: float = 0.0
+        self, x_mat: np.ndarray[float], y_vec: np.ndarray[float], nugget: float = 1e-6
     ):
 
         super().__init__(x_mat, y_vec)
 
         self.nugget = nugget
 
-        self.pre_psi = self.calculate_pre_psi_matrix()
+        self.theta, self.p = self.calculate_hyper_params()
 
-        self.theta = self.calculate_hyper_params()
-
-        self.psi, self.inv_psi = self.calculate_psi_matrix(self.theta)
+        self.psi, self.inv_psi = self.calculate_psi_matrix(self.theta, self.p)
 
         self.mu = self.calculate_kriging_mean(self.inv_psi)
 
@@ -28,12 +26,15 @@ class Kriging(model.Model):
         self.b = self.calculate_b()
 
     def calculate_hyper_params(self):
-        fun = lambda theta: (-self.calculate_mle(theta))
-        theta0 = np.ones((self.d, 1), dtype=float)
-        theta0 = theta0 * 40
-        print(self.d)
-        theta_opt = scipy.optimize.fmin(fun, theta0)
-        return theta_opt
+        fun = lambda vars: (-self.calculate_mle(vars[: self.d], vars[self.d :]))
+        x0 = np.ones(self.d * 2, dtype=float)
+        bounds = [(0, None)] * self.d + [(1, 2)] * self.d
+        DEBUG_VALUE = fun(x0)
+        print(f"Value for mle lambda fxn is {DEBUG_VALUE}")
+        result = scipy.optimize.minimize(fun, x0, method="L-BFGS-B", bounds=bounds)
+        theta_opt = result.x[: self.d]
+        p_opt = result.x[self.d :]
+        return theta_opt, p_opt
 
     def calculate_pre_psi_matrix(self):
         pre_psi_ij = np.zeros((self.n, self.n), dtype=float)
@@ -42,6 +43,9 @@ class Kriging(model.Model):
                 diffX = self.x[i, :] - self.x[j, :]
                 pre_psi_ij[i, j] = np.dot(diffX, diffX)
         return pre_psi_ij
+
+    def calculate_diffs(self):
+        return np.abs(self.x[:, None, :] - self.x[None, :, :])
 
     def calculate_kriging_mean(self, inv_psi):
         F = np.ones((self.n, 1))
@@ -59,17 +63,33 @@ class Kriging(model.Model):
         b = self.inv_psi @ (self.y - np.ones((self.n, 1)) * self.mu)
         return b
 
-    def calculate_psi_matrix(self, theta):
-        psi = np.exp(-theta * self.pre_psi)
+    def calculate_psi_matrix(self, theta, p):
+        psi = self._calculate_correlation(theta, p, self.x, self.x)
+        print(f"Shape of psi {np.shape(psi)}")
         # Add a constant term to the matrix diagonal to increase stability
-        psi += np.eye(self.n) * 1e-6
-        if self.nugget:
-            psi = psi + np.ones((self.n, self.n)) * (self.nugget)
+        # nugget defaults to a near zero number
+        psi += np.eye(self.n) * self.nugget
         inv_psi = np.linalg.inv(psi)
+        print(inv_psi)
         return psi, inv_psi
 
-    def calculate_mle(self, theta):
-        psi, inv_psi = self.calculate_psi_matrix(theta)
+    def _calculate_correlation(self, theta, p, X_1, X_2):
+        # Generate a matrix of theta elements of the same size as the dimensions
+        diffs = np.abs(X_1[:, None, :] - X_2[None, :, :])
+
+        # Use the power vector for each of the difference matrix elements
+        diffs_powered = diffs ** p[np.newaxis, np.newaxis, :]
+
+        # Multiply each element by the theta vector
+        psi = np.tensordot(diffs_powered, theta, axes=([2], [0]))
+
+        # Take the negative exponent of the psi matrix
+        psi = np.exp(-psi)
+
+        return psi
+
+    def calculate_mle(self, theta, p):
+        psi, inv_psi = self.calculate_psi_matrix(theta, p)
         mu_hat = self.calculate_kriging_mean(inv_psi)
         sigma = self.calculate_sigma(inv_psi, mu_hat)
         mle = -0.5 * (self.n * np.log(sigma) + np.log(np.linalg.det(psi)))
@@ -83,12 +103,9 @@ class Kriging(model.Model):
         return mle, sigma, np.linalg.det(psi)
 
     def evaluate(self, x_new):
-        F = np.ones((self.n, 1))
-        x_diff = F * x_new - self.x
-        y_pred = np.exp(-self.theta * (x_diff * x_diff))
-        y_pred = y_pred * self.b
-        sum_y = np.sum(y_pred)
-        return np.sum(y_pred) + self.mu
+        psi_new = self._calculate_correlation(self.theta, self.p, x_new, self.x)
+        y_hat = psi_new @ self.b + self.mu
+        return y_hat
 
     def plot_MLE(self):
         theta = np.linspace(1.0, 20.0, 1000)
