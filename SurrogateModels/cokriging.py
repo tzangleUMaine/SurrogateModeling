@@ -6,7 +6,7 @@ import kriging
 
 
 class CoKriging(mf_model.MFModel):
-    def __init__(self, x_lf, y_lf, x_hf, y_hf, scale_fixed=False):
+    def __init__(self, x_lf, y_lf, x_hf, y_hf):
 
         # Init the multifidelity model data
         super().__init__(x_lf, y_lf, x_hf, y_hf)
@@ -21,13 +21,11 @@ class CoKriging(mf_model.MFModel):
 
         # Match find values for the low fidelity data set at exactly the same
         # locations as the high fidelity data
-        y_lf_hat = np.zeros((self.n_hf, 1), float)
-        for i, x in enumerate(self.x):
-            y_lf_hat[i, 0] = self.kriging_lf.evaluate(x)
+        y_lf_hat = self.kriging_lf.evaluate(self.x)
 
         # Set up kriging model of the difference between the low and
         # high fidelity data set
-        self.kriging_diff = kriging.DiffKriging(self.x, self.y, y_lf_hat, scale_fixed)
+        self.kriging_diff = kriging.DiffKriging(self.x, self.y, y_lf_hat)
 
         # Find a kriging model for the high fidelity data set
         # This is not completely necessary, may be removed later for efficiency

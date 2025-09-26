@@ -136,9 +136,7 @@ class Kriging(model.Model):
 
 
 class DiffKriging(Kriging):
-    def __init__(self, x_mat, yh, yl, scale_fixed=False, nugget=0.0):
-        # Debugging fun for checking stability
-        self.scale_fixed = scale_fixed
+    def __init__(self, x_mat, yh, yl, nugget=1e-6):
 
         self.x = x_mat
 
@@ -160,14 +158,9 @@ class DiffKriging(Kriging):
 
         self.pre_psi = self.calculate_pre_psi_matrix()
 
-        self.theta, self.scale_factor = self.calculate_hyper_params(
-            self.theta, self.scale_factor
-        )
+        self.theta, self.p, self.scale_factor = self.calculate_hyper_params()
 
-        # Override the scale_factor
-        # self.scale_factor = 1.87
-
-        self.psi, self.inv_psi = self.calculate_psi_matrix(self.theta)
+        self.psi, self.inv_psi = self.calculate_psi_matrix(self.theta, self.p)
 
         self.mu = self.calculate_kriging_mean(self.inv_psi)
 
@@ -175,27 +168,31 @@ class DiffKriging(Kriging):
 
         self.b = self.calculate_b()
 
-    def fun(self, params):
-        theta = params[0:-1]
-        scale_factor = params[-1]
-        return -self.calculate_mle(theta, scale_factor)
+    def calculate_hyper_params(self):
 
-    def calculate_hyper_params(self, theta0, scale_factor0):
-        if self.scale_fixed == True:
-            fixed_scale_factor = 1.87
-            fun1 = lambda theta: (-self.calculate_mle(theta, fixed_scale_factor))
-            theta_opt = scipy.optimize.fmin(fun1, theta0)
-            return theta_opt, fixed_scale_factor
-        init_vars = np.append(theta0, scale_factor0)
-        b = (1e-3, None)
-        bounds = (b, b)
-        result = scipy.optimize.minimize(self.fun, init_vars, bounds=bounds)
-        theta_opt = result.x[0:-1]
+        # Generate version of MLE compatible with scipy optimizers
+        fun = lambda vars: (
+            -self.calculate_mle(vars[: self.d], vars[self.d : -1], vars[-1])
+        )
+
+        # Set initial guess to 1 for all variables
+        x0 = np.ones(self.d * 2 + 1, dtype=float)
+
+        # Set Bounds
+        bounds = [(0, None)] * self.d  # Bounds for theta values
+        bounds = bounds + [(1, 2)] * self.d  # Bounds for p values
+        bounds = bounds + [(1e-3, None)]  # Bounds for scale factor
+
+        # Run the optimizer for the lbfgs
+        result = scipy.optimize.minimize(fun, x0, method="L-BFGS-B", bounds=bounds)
+
+        theta_opt = result.x[: self.d]
+        p_opt = result.x[self.d : -1]
         scale_factor_opt = result.x[-1]
-        return theta_opt, scale_factor_opt
+        return theta_opt, p_opt, scale_factor_opt
 
-    def calculate_mle(self, theta, scale_factor):
-        psi, inv_psi = self.calculate_psi_matrix(theta)
+    def calculate_mle(self, theta, p, scale_factor):
+        psi, inv_psi = self.calculate_psi_matrix(theta, p)
         self.y = self.yh - scale_factor * self.yl
         mu_hat = self.calculate_kriging_mean(inv_psi)
         sigma = self.calculate_sigma(inv_psi, mu_hat)
