@@ -29,8 +29,6 @@ class Kriging(model.Model):
         fun = lambda vars: (-self.calculate_mle(vars[: self.d], vars[self.d :]))
         x0 = np.ones(self.d * 2, dtype=float)
         bounds = [(0, None)] * self.d + [(1, 2)] * self.d
-        DEBUG_VALUE = fun(x0)
-        print(f"Value for mle lambda fxn is {DEBUG_VALUE}")
         result = scipy.optimize.minimize(fun, x0, method="L-BFGS-B", bounds=bounds)
         theta_opt = result.x[: self.d]
         p_opt = result.x[self.d :]
@@ -65,12 +63,10 @@ class Kriging(model.Model):
 
     def calculate_psi_matrix(self, theta, p):
         psi = self._calculate_correlation(theta, p, self.x, self.x)
-        print(f"Shape of psi {np.shape(psi)}")
         # Add a constant term to the matrix diagonal to increase stability
         # nugget defaults to a near zero number
         psi += np.eye(self.n) * self.nugget
         inv_psi = np.linalg.inv(psi)
-        print(inv_psi)
         return psi, inv_psi
 
     def _calculate_correlation(self, theta, p, X_1, X_2):

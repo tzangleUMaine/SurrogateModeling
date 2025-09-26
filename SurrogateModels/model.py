@@ -14,7 +14,14 @@ class Model:
     def evaluate(self, x_in):
         raise NotImplementedError()
 
-    def plot_data(self, name="Data", color="black", label="model", marker="o"):
+    def plot_data(
+        self,
+        name="Data",
+        color="black",
+        label="model",
+        marker="o",
+        ax: plt.subplot = None,
+    ):
         if self.d == 1:
             plt.figure(name)
             plt.title(name)
@@ -23,15 +30,29 @@ class Model:
             plt.xlabel("x")
             plt.ylabel("y(x)")
         if self.d == 2:
-            plt.figure(name, projection="3d")
-            plt.title(name)
-            plt.scatter(self.x[:, 0], self.x[:, 1], self.y, color=color, label=label)
-            plt.legend()
-            plt.xlabel("x")
-            plt.ylabel("y(x)")
+            if ax == None:
+                fig = plt.figure(name)
+                ax = fig.add_subplot(projection="3d")
+                ax.set_title(name)
+                ax.legend()
+                ax.set_xlabel("x1")
+                ax.set_ylabel("x2")
+                ax.set_zlabel("y(x)")
+
+            ax.scatter(
+                self.x[:, 0], self.x[:, 1], self.y[:, 0], color=color, label=label
+            )
+            return ax
 
     def plot_model(
-        self, x_vals, name="Model", color="black", label="model", linestyle="solid"
+        self,
+        x_vals,
+        name="Model",
+        color="black",
+        label="model",
+        linestyle="solid",
+        ax=None,
+        nsamp=100,
     ):
         if self.d == 1:
             y_hat = self.evaluate(x_vals)
@@ -43,13 +64,15 @@ class Model:
             plt.ylabel("y(x)")
         if self.d == 2:
             y_hat = self.evaluate(x_vals)
-            plt.figure(name, projection="3d")
-            plt.title(name)
-            plt.scatter(x_vals[:, 0], x_vals[:, 1], y_hat, color=color, label=label)
-            plt.legend()
-            plt.xlabel("x0")
-            plt.ylabel("x1")
-            plt.zlabel("y")
+            if ax == None:
+                fig = plt.figure(name)
+                ax = fig.add_subplot(projection="3d")
+                ax.set_title(name)
+                ax.legend()
+                ax.set_xlabel("x1")
+                ax.set_ylabel("x2")
+                ax.set_zlabel("y(x)")
+
         return
 
     def rms_error(self, model, x_vals):

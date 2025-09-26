@@ -154,7 +154,7 @@ class ZhangExample6(MultiFidelityTemplate):
         self.name = "Zhang Example 6"
 
     def high_fidelity(self, x):
-        return (
+        y_hf = (
             4 * x[:, 0] ** 2
             - 2.1 * x[:, 0] ** 4
             + (x[:, 0] ** 6) / 3
@@ -162,9 +162,11 @@ class ZhangExample6(MultiFidelityTemplate):
             - 4 * x[:, 1] ** 2
             + 4 * x[:, 1] ** 4
         )
+        return y_hf.reshape(-1, 1)
 
     def low_fidelity(self, x):
-        return self.high_fidelity(0.7 * x) + x[:, 0] * x[:, 1] - 65
+        y_lf_extra = x[:, 0] * x[:, 1] - 65
+        return self.high_fidelity(0.7 * x) + y_lf_extra.reshape(-1, 1)
 
 
 class MengDiscontinuous(MultiFidelityTemplate):
