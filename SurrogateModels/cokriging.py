@@ -32,11 +32,7 @@ class CoKriging(mf_model.MFModel):
         self.kriging_hf = kriging.Kriging(self.x, self.y)
 
         # Set up the cokriging covariance matrix
-        psi_ec, psi_ce = self.calculate_psi_matrix()
-        psic_e = self.calculate_pre_psi_matrix(self.x)
-        psic_e = np.exp(-self.kriging_lf.theta * psic_e)
-
-        self.C, self.inv_C = self.calculate_covariance(psi_ce, psi_ec, psic_e)
+        self.C, self.inv_C = self.calculate_covariance()
 
         # Assemble the combined y vector of cheap and expensive values
         self.yck = np.vstack((self.y_lf, self.y))
@@ -134,29 +130,47 @@ class CoKriging(mf_model.MFModel):
         psi_ce = np.transpose(psi_ec)
         return psi_ec, psi_ce
 
-    def calculate_covariance(self, psic_ce, psic_ec, psic_e):
+    def calculate_covariance(self):
+
+        # psi_c(X_e, X_c)
+        psic_ec = self.kriging_lf._calculate_correlation(
+            self.kriging_lf.theta, self.x, self.x_lf
+        )
+        # psi_c(X_c, X_e)
+        psic_ce = self.kriging_lf._calculate_correlation(
+            self.kriging_lf.theta, self.x_lf, self.x
+        )
+        # psi_c(X_e, X_e)
+        psic_e = self.kriging_lf._calculate_correlation(
+            self.kriging_lf.theta, self.x, self.x
+        )
+
         n = self.n_hf + self.n_lf
         C_mat = np.zeros((n, n))
+
+        # set n_c x n_c in top left
         C_mat[0 : self.n_lf, 0 : self.n_lf] = (
             self.kriging_lf.sigma * self.kriging_lf.psi
         )
+
+        # Set n_c x n_e in top right
         C_mat[0 : self.n_lf, self.n_lf : n] = (
             self.kriging_diff.scale_factor * self.kriging_lf.sigma * psic_ce
         )
+
+        # Set n_e x n_c in bottom left
         C_mat[self.n_lf : n, 0 : self.n_lf] = (
             self.kriging_diff.scale_factor * self.kriging_lf.sigma * psic_ec
         )
-        val1 = self.kriging_diff.scale_factor**2 * self.kriging_lf.sigma * psic_e
-        val2 = self.kriging_diff.sigma * self.kriging_diff.psi
+
+        # Set n_e x n_e in bottom right of matrix
         C_mat[self.n_lf : n, self.n_lf : n] = (
             self.kriging_diff.scale_factor**2 * self.kriging_lf.sigma * psic_e
+            + self.kriging_diff.sigma * self.kriging_diff.psi
         )
-        C_mat[self.n_lf : n, self.n_lf : n] += (
-            self.kriging_diff.sigma * self.kriging_diff.psi
-        )
-        mat = np.matrix(C_mat)
-        with open("CMATOUT.txt", "wb") as f:
-            for line in mat:
-                np.savetxt(f, line, fmt="%.2f")
+        # mat = np.matrix(C_mat)
+        # with open("CMATOUT.txt", "wb") as f:
+        #     for line in mat:
+        #         np.savetxt(f, line, fmt="%.2f")
         inv_C_mat = np.linalg.inv(C_mat)
         return C_mat, inv_C_mat
