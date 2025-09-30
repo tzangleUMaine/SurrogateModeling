@@ -40,29 +40,6 @@ class CoKriging(mf_model.MFModel):
         # Find the mean
         self.mean = self.calculate_mean()
 
-    def calculate_hyper_params(self):
-        fun = lambda theta: (-self.calculate_mle(theta))
-        theta0 = np.ones((self.d, 1), dtype=float)
-        theta_opt = scipy.optimize.fmin(fun, theta0)
-        return theta_opt
-
-    def calculate_pre_psi_matrix(self):
-        pre_psi_ij = np.zeros((self.n, self.n), dtype=float)
-        for i in range(0, self.n):
-            for j in range(0, self.n):
-                diffX = self.x[i, :] - self.x[j, :]
-                pre_psi_ij[i, j] = np.dot(diffX, diffX)
-        return pre_psi_ij
-
-    def calculate_pre_psi_matrix(self, X):
-        n, d = np.shape(X)
-        pre_psi_ij = np.zeros((n, n), dtype=float)
-        for i in range(n):
-            for j in range(n):
-                diffX = X[i, :] - X[j, :]
-                pre_psi_ij[i, j] = np.dot(diffX, diffX)
-        return pre_psi_ij
-
     def calculate_mean(self):
         F = np.ones((self.n, 1))
         mu = np.transpose(F) @ self.inv_C @ self.yck
@@ -80,69 +57,21 @@ class CoKriging(mf_model.MFModel):
         b = self.inv_psi @ (self.y - np.ones((self.n, 1)) * self.mu)
         return b
 
-    def calculate_psi_matrix(self, theta):
-        psi_ij = np.exp(-theta * self.pre_psi)
-        inv_psi_ij = np.linalg.inv(psi_ij)
-        return psi_ij, inv_psi_ij
-
-    def calculate_mle(self, theta):
-        psi, inv_psi = self.calculate_psi_matrix(theta)
-        mu_hat = self.calculate_kriging_mean(inv_psi)
-        sigma = self.calculate_sigma(inv_psi, mu_hat)
-        mle = -0.5 * (self.n * np.log(sigma) + np.log(np.linalg.det(psi)))
-        return mle
-
-    def evaluate(self, x_new):
-
-        F = np.ones((self.n_lf, self.d))
-        diff_norm = x_new * F - self.x_lf
-        diff_norm_dot = diff_norm * diff_norm
-        psic_new = np.exp(-self.kriging_lf.theta * diff_norm_dot)
-
-        F = np.ones((self.n_hf, self.d))
-        diff_norm = x_new * F - self.x
-        diff_norm_dot = diff_norm * diff_norm
-        psie_new = np.exp(-self.kriging_lf.theta * diff_norm_dot)
-        psid_new = np.exp(-self.kriging_diff.theta * diff_norm_dot)
-
-        c_vec = np.zeros((self.n, 1))
-        c_vec[0 : self.n_lf] = (
-            self.kriging_diff.scale_factor * self.kriging_lf.sigma * psic_new
-        )
-        c_vec[self.n_lf : self.n] = (
-            self.kriging_diff.scale_factor**2 * self.kriging_lf.sigma * psie_new
-        )
-        c_vec[self.n_lf : self.n] += self.kriging_diff.sigma * psid_new
-
-        F = np.ones((self.n, self.d))
-        y_pred = self.mean + np.transpose(c_vec) @ self.inv_C @ (
-            self.yck - F * self.mean
-        )
-        return y_pred
-
-    # Calculate the distance relation between multi-fidelity datasets
-    def calculate_psi_matrix(self):
-        psi_ec = np.zeros((self.n_hf, self.n_lf))
-        for i in range(self.n_hf):
-            for j in range(self.n_lf):
-                diffX = self.x[i, :] - self.x_lf[j, :]
-                psi_ec[i, j] = np.exp(-self.kriging_lf.theta * np.dot(diffX, diffX))
-        psi_ce = np.transpose(psi_ec)
-        return psi_ec, psi_ce
-
+    # Function calculates the covariance matrix for cokriging using kriging constants solved
+    # for in the low fidelity and difference models
     def calculate_covariance(self):
 
         # psi_c(X_e, X_c)
         psic_ec = self.kriging_lf._calculate_correlation(
-            self.kriging_lf.theta, self.x, self.x_lf
+            self.kriging_lf.theta, self.kriging_lf.p, self.x, self.x_lf
         )
         # psi_c(X_c, X_e)
         psic_ce = self.kriging_lf._calculate_correlation(
-            self.kriging_lf.theta, self.x_lf, self.x
+            self.kriging_lf.theta, self.kriging_lf.p, self.x_lf, self.x
         )
         # psi_c(X_e, X_e)
         psic_e = self.kriging_lf._calculate_correlation(
-            self.kriging_lf.theta, self.x, self.x
+            self.kriging_lf.theta, self.kriging_lf.p, self.x, self.x
         )
 
         n = self.n_hf + self.n_lf
@@ -174,3 +103,33 @@ class CoKriging(mf_model.MFModel):
         #         np.savetxt(f, line, fmt="%.2f")
         inv_C_mat = np.linalg.inv(C_mat)
         return C_mat, inv_C_mat
+
+    def evaluate(self, x_new):
+
+        # Solve for correlation values of evaluation points
+        psic_c_new = self.kriging_lf._calculate_correlation(
+            self.kriging_lf.theta, self.kriging_lf.p, self.x_lf, x_new
+        )
+
+        psic_e_new = self.kriging_lf._calculate_correlation(
+            self.kriging_lf.theta, self.kriging_lf.p, self.x, x_new
+        )
+
+        psid_e_new = self.kriging_diff._calculate_correlation(
+            self.kriging_diff.theta, self.kriging_diff.p, self.x, x_new
+        )
+
+        # Construct the covariance matrix for evaluation points
+        c_top = self.kriging_diff.scale_factor * self.kriging_lf.sigma * psic_c_new
+        c_bot = (
+            (self.kriging_diff.scale_factor**2) * self.kriging_lf.sigma * psic_e_new
+            + self.kriging_diff.sigma * psid_e_new
+        )
+        c_vec = np.vstack((c_top, c_bot))
+
+        # Generate evaluation points
+        F = np.ones((self.n, self.d))
+        y_pred = self.mean + np.transpose(c_vec) @ self.inv_C @ (
+            self.yck - F * self.mean
+        )
+        return y_pred
