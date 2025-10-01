@@ -38,7 +38,7 @@ class Model:
             ax.set_title(name)
             ax.set_xlabel("x1")
             ax.set_ylabel("x2")
-            ax.set_zlabel("y(x)")
+            ax.set_zlabel("f(x)")
 
             ax.scatter(
                 self.x[:, 0], self.x[:, 1], self.y[:, 0], color=color, label=label
@@ -73,7 +73,7 @@ class Model:
 
             ax.set_title(name)
             ax.set_xlabel("x")
-            ax.set_ylabel("y(x)")
+            ax.set_ylabel("f(x)")
 
             ax.plot(x_test, y_hat, color=color, label=label, linestyle=linestyle)
             ax.legend()
@@ -87,8 +87,9 @@ class Model:
 
             # Generate the sample point locations and meshgrid then evaluate the model
             X1, X2 = Model.generate_grid(x1_min, x1_max, x2_min, x2_max, n_samples)
-
-            x_sample = np.column_stack([X1.ravel(), X2.ravel()])
+            x_sample = Model.generate_grid_array(
+                x1_min, x1_max, x2_min, x2_max, n_samples
+            )
             y_hat = self.evaluate(x_sample)
             y_hat = y_hat.reshape(n_samples, n_samples)
 
@@ -98,10 +99,13 @@ class Model:
                 ax = fig.add_subplot(projection="3d")
 
             ax.set_title(name)
-            ax.set_xlabel("x")
-            ax.set_ylabel("y(x)")
+            ax.set_xlabel("x_1")
+            ax.set_ylabel("x_2")
+            ax.set_zlabel("f(x)")
 
-            ax.plot(X1, X2, y_hat, color=color, label=label, linestyle=linestyle)
+            ax.plot_surface(
+                X1, X2, y_hat, color=color, label=label, linestyle=linestyle
+            )
             ax.legend()
             return ax
 

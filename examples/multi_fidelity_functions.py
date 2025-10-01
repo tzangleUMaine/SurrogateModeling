@@ -234,6 +234,27 @@ class MengPhaseShift(MultiFidelityTemplate):
         return np.sin(8 * np.pi * x)
 
 
+class PeaksShifted(MultiFidelityTemplate):
+    """Example generated from Peaks function
+    Utilizes a non-linear scaling to generate data from peaks function"""
+
+    def __init__(self):
+        self.bounds = [[-2, 2], [-2, 2]]
+        self.dimensions = 2
+        self.name = "Peaks Function Shifted"
+
+    def high_fidelity(self, x):
+        return 2.0 * self.low_fidelity(0.8 * x) + (0.13 * x[0] * x[1]).reshape(-1, 1)
+
+    def low_fidelity(self, x):
+        y_lf = (
+            3 * (1 - x[0]) ** 2 * np.exp(-(x[0] ** 2) - (x[1] + 1) ** 2)
+            - 10 * (x[0] / 5 - x[0] ** 3 - x[1] ** 5) * np.exp(-x[0] ** 2 - x[1] ** 2)
+            - 1 / 3 * np.exp(-((x[0] + 1) ** 2) - x[1] ** 2)
+        )
+        return y_lf.reshape(-1, 1)
+
+
 multi_fidelity_functions = {
     "Zhang Example 1": ZhangExample1,
     "Zhang Example 3": ZhangExample3,
@@ -243,18 +264,3 @@ multi_fidelity_functions = {
     "Meng Non-Linear Correlation": MengNonLinearCorrelation,
     "Meng Phase Shifted Oscillations": MengPhaseShift,
 }
-
-
-def generate_grid(xmin=-2, xmax=2, ymin=-2, ymax=2, num=50):
-    x = np.linspace(xmin, xmax, num)
-    y = np.linspace(ymin, ymax, num)
-    X, Y = np.meshgrid(x, y)
-    return X, Y
-
-
-def generate_grid_array(xmin=-2, xmax=2, ymin=-2, ymax=2, num=50):
-    x = np.linspace(xmin, xmax, num)
-    y = np.linspace(ymin, ymax, num)
-    X, Y = np.meshgrid(x, y)
-    grid = np.column_stack([X.ravel(), Y.ravel()])
-    return grid

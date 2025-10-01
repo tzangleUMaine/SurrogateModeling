@@ -97,10 +97,7 @@ class CoKriging(mf_model.MFModel):
             self.kriging_diff.scale_factor**2 * self.kriging_lf.sigma * psic_e
             + self.kriging_diff.sigma * self.kriging_diff.psi
         )
-        # mat = np.matrix(C_mat)
-        # with open("CMATOUT.txt", "wb") as f:
-        #     for line in mat:
-        #         np.savetxt(f, line, fmt="%.2f")
+
         inv_C_mat = np.linalg.inv(C_mat)
         return C_mat, inv_C_mat
 
@@ -128,7 +125,7 @@ class CoKriging(mf_model.MFModel):
         c_vec = np.vstack((c_top, c_bot))
 
         # Generate evaluation points
-        F = np.ones((self.n, self.d))
+        F = np.ones((self.n, 1))
         y_pred = self.mean + np.transpose(c_vec) @ self.inv_C @ (
             self.yck - F * self.mean
         )
