@@ -1,6 +1,8 @@
 import numpy as np
 import matplotlib.pyplot as plt
 
+import model
+
 
 class MultiFidelityTemplate:
     def __init__(self):
@@ -20,44 +22,111 @@ class MultiFidelityTemplate:
     def get_dimensions(self):
         return self.dimensions
 
-    def plot_high_fidelity_data_1d(
-        self, name="Model", color="black", label="high fidelity fxn", linestyle="solid"
+    def plot_high_fidelity(
+        self,
+        name="Model",
+        color="black",
+        label="high fidelity fxn",
+        linestyle="solid",
+        ax=None,
+        n_samples=100,
     ):
-        if self.dimensions != 1:
-            print("Wrong plotting function used for current dimensionality")
-            return
+        return self._plot_function(
+            self.high_fidelity,
+            name=name,
+            color=color,
+            label=label,
+            linestyle=linestyle,
+            ax=ax,
+            n_samples=100,
+        )
 
-        x = np.linspace(self.bounds[0][0], self.bounds[0][1], 300)
-        y = self.high_fidelity(x)
-        plt.figure(name)
-        plt.title(name)
-        plt.plot(x, y, color=color, label=label, linestyle=linestyle)
-        plt.legend()
-        plt.xlabel("x")
-        plt.ylabel("y(x)")
-        return
-
-    def plot_low_fidelity_data_1d(
-        self, name="Model", color="blue", label="low fidelity fxn", linestyle="solid"
+    def plot_low_fidelity(
+        self,
+        name="Model",
+        color="blue",
+        label="low fidelity fxn",
+        linestyle="solid",
+        ax=None,
+        n_samples=100,
     ):
-        if self.dimensions != 1:
-            print("Wrong plotting function used for current dimensionality")
-            return
+        return self._plot_function(
+            self.low_fidelity,
+            name=name,
+            color=color,
+            label=label,
+            linestyle=linestyle,
+            ax=ax,
+            n_samples=100,
+        )
 
-        x = np.linspace(self.bounds[0][0], self.bounds[0][1], 300)
-        y = self.low_fidelity(x)
-        plt.figure(name)
-        plt.title(name)
-        plt.plot(x, y, color=color, label=label, linestyle=linestyle)
-        plt.legend()
-        plt.xlabel("x")
-        plt.ylabel("y(x)")
-        return
+    def plot_functions(self, name="Model"):
+        ax = self.plot_low_fidelity(name=name)
+        ax = self.plot_high_fidelity(name=name, ax=ax)
+        return ax
 
-    def plot_functions_1d(self, name="Model"):
-        self.plot_low_fidelity_data_1d(name=name)
-        self.plot_high_fidelity_data_1d(name=name)
-        return
+    def _plot_function(
+        self,
+        function,
+        name="Model",
+        color="black",
+        label="function plot",
+        linestyle="solid",
+        ax=None,
+        n_samples=100,
+    ):
+        if self.dimensions == 1:
+            # Read in bounds
+            x_min = self.bounds[0][0]
+            x_max = self.bounds[0][1]
+
+            # Generate the sample point locations and evaluate the model
+            x_test = np.linspace(x_min, x_max, n_samples, dtype=np.float32)
+            x_test = x_test.reshape(-1, 1)
+            y_test = function(x_test)
+
+            # Plot the function
+            if ax == None:
+                fig = plt.figure(name)
+                ax = fig.add_subplot()
+
+            ax.set_title(name)
+            ax.set_xlabel("x")
+            ax.set_ylabel("f(x)")
+
+            ax.plot(x_test, y_test, color=color, label=label, linestyle=linestyle)
+            return ax
+        elif self.d == 2:
+            # Read in bounds
+            x1_min = self.bounds[0][0]
+            x1_max = self.bounds[0][1]
+            x2_min = self.bounds[1][0]
+            x2_max = self.bounds[1][1]
+
+            # Generate the sample point locations and meshgrid then evaluate the model
+            X1, X2 = model.Model.generate_grid(
+                x1_min, x1_max, x2_min, x2_max, n_samples
+            )
+            x_sample = model.Model.generate_grid_array(
+                x1_min, x1_max, x2_min, x2_max, n_samples
+            )
+            y_sample = function(x_sample)
+            y_sample = y_sample.reshape(n_samples, n_samples)
+
+            # Plot the function
+            if ax == None:
+                fig = plt.figure(name)
+                ax = fig.add_subplot(projection="3d")
+
+            ax.set_title(name)
+            ax.set_xlabel("x_1")
+            ax.set_ylabel("x_2")
+            ax.set_zlabel("f(x)")
+
+            ax.plot_surface(
+                X1, X2, y_sample, color=color, label=label, linestyle=linestyle
+            )
+            return ax
 
 
 class ZhangExample1(MultiFidelityTemplate):
@@ -244,13 +313,17 @@ class PeaksShifted(MultiFidelityTemplate):
         self.name = "Peaks Function Shifted"
 
     def high_fidelity(self, x):
-        return 2.0 * self.low_fidelity(0.8 * x) + (0.13 * x[0] * x[1]).reshape(-1, 1)
+        return 2.0 * self.low_fidelity(0.8 * x) + (0.13 * x[:, 0] * x[:, 1]).reshape(
+            -1, 1
+        )
 
     def low_fidelity(self, x):
         y_lf = (
-            3 * (1 - x[0]) ** 2 * np.exp(-(x[0] ** 2) - (x[1] + 1) ** 2)
-            - 10 * (x[0] / 5 - x[0] ** 3 - x[1] ** 5) * np.exp(-x[0] ** 2 - x[1] ** 2)
-            - 1 / 3 * np.exp(-((x[0] + 1) ** 2) - x[1] ** 2)
+            3 * (1 - x[:, 0]) ** 2 * np.exp(-(x[:, 0] ** 2) - (x[:, 1] + 1) ** 2)
+            - 10
+            * (x[:, 0] / 5 - x[:, 0] ** 3 - x[:, 1] ** 5)
+            * np.exp(-x[:, 0] ** 2 - x[:, 1] ** 2)
+            - 1 / 3 * np.exp(-((x[:, 0] + 1) ** 2) - x[:, 1] ** 2)
         )
         return y_lf.reshape(-1, 1)
 
