@@ -176,7 +176,6 @@ class Model:
             y_hat = self.evaluate(x_sample)
             y_truth = fxn_truth(x_sample)
             error = np.sqrt((y_hat - y_truth) ** 2)
-            error = error * 0
             error = error.reshape(n_samples, n_samples)
 
             # Plot the function
