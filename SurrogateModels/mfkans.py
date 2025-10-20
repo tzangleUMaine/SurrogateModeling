@@ -23,7 +23,7 @@ class KANModel(kan.KAN, model.Model):
         x_mat: np.ndarray[float],
         y_vec: np.ndarray[float],
         spline_order: int = 3,
-        width: list = [2, 1, 1],
+        width: list = [1, 2, 1],
         grid: int = 3,
         opt: str = "LBFGS",
     ):
@@ -34,14 +34,14 @@ class KANModel(kan.KAN, model.Model):
         x_mat_tensor = torch.from_numpy(x_mat)
         y_vec_tensor = torch.from_numpy(y_vec)
         dataset = kan.create_dataset_from_data(
-            x_mat_tensor, y_vec_tensor, train_ratio=1.0, device=DEVICE
+            x_mat_tensor, y_vec_tensor, train_ratio=0.8, device=DEVICE
         )
 
         self.fit(dataset=dataset, opt=opt, steps=20)
 
     def evaluate(self, x):
         x_tensor = torch.from_numpy(x)
-        return self(x)
+        return self.forward(x)
 
 
 def test_kan():
@@ -53,7 +53,7 @@ def test_kan():
     xmax = mf_example.bounds[0][1]
 
     n_lf = 11  # number of low fidelity points
-    n_hf = 6  # number of high fidelity points
+    n_hf = 100  # number of high fidelity points
     n_test = 40  # number of test points
 
     # Generate the analytical functions
@@ -82,6 +82,8 @@ def test_kan():
     plt.show()
 
     forrester_kan = KANModel(X_hf, y_hf)
+
+    forrester_kan.plot()
 
 
 test_kan()
