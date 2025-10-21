@@ -22,6 +22,8 @@ class KANModel(kan.KAN, model.Model):
         self,
         x_mat: np.ndarray[float],
         y_vec: np.ndarray[float],
+        x_mat_test: np.ndarray[float] = None,
+        y_vec_test: np.ndarray[float] = None,
         spline_order: int = 3,
         width: list = [1, 2, 1],
         grid: int = 3,
@@ -33,15 +35,51 @@ class KANModel(kan.KAN, model.Model):
         model.Model.__init__(self, x_mat=x_mat, y_vec=y_vec)
         x_mat_tensor = torch.from_numpy(x_mat)
         y_vec_tensor = torch.from_numpy(y_vec)
-        dataset = kan.create_dataset_from_data(
-            x_mat_tensor, y_vec_tensor, train_ratio=0.8, device=DEVICE
+        x_mat_test_tensor = torch.from_numpy(x_mat_test)
+        y_vec_test_tensor = torch.from_numpy(y_vec_test)
+        self.dataset = KANModel.create_dataset_from_test_train_data(
+            x_mat_tensor, y_vec_tensor, x_mat_tensor, y_vec_test_tensor, device=DEVICE
         )
 
-        self.fit(dataset=dataset, opt=opt, steps=20)
+        self.fit(dataset=self.dataset, opt=opt, steps=100)
+
+    def check_forward_debugging(self):
+        evaluated_poitns = self.forward(self.dataset["train_input"][:])
+        print(self.dataset["train_input"][:])
+        print(evaluated_poitns)
+        return
 
     def evaluate(self, x):
         x_tensor = torch.from_numpy(x)
-        return self.forward(x)
+        with torch.no_grad():
+            return self.forward(x_tensor)
+
+    @classmethod
+    def create_dataset_from_test_train_data(
+        self, inputs_train, labels_train, inputs_test, labels_test, device="cpu"
+    ):
+        """
+        create dataset from data
+
+        Args:
+        -----
+            inputs_train : 2D torch.float
+            labels_train : 2D torch.float
+            inputs_test : 2D torch.float
+            labels_test : 2D torch.float
+            device : str
+
+        Returns:
+        --------
+            dataset (dictionary)
+        """
+        dataset = {}
+        dataset["train_input"] = inputs_train[:].detach().to(device)
+        dataset["test_input"] = inputs_test[:].detach().to(device)
+        dataset["train_label"] = labels_train[:].detach().to(device)
+        dataset["test_label"] = labels_test[:].detach().to(device)
+
+        return dataset
 
 
 def test_kan():
@@ -86,4 +124,4 @@ def test_kan():
     forrester_kan.plot()
 
 
-test_kan()
+# test_kan()
