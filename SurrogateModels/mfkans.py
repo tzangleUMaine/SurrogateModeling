@@ -43,12 +43,6 @@ class KANModel(kan.KAN, model.Model):
 
         self.fit(dataset=self.dataset, opt=opt, steps=100)
 
-    def check_forward_debugging(self):
-        evaluated_poitns = self.forward(self.dataset["train_input"][:])
-        print(self.dataset["train_input"][:])
-        print(evaluated_poitns)
-        return
-
     def evaluate(self, x):
         x_tensor = torch.from_numpy(x)
         with torch.no_grad():
@@ -82,46 +76,59 @@ class KANModel(kan.KAN, model.Model):
         return dataset
 
 
-def test_kan():
-    mf_example = mfs.ForresterExample()
+class MFKANModel(mf_model.MFModel):
+    def __init__(
+        self,
+        x_lf: np.ndarray[float],
+        y_lf: np.ndarray[float],
+        x_lf_test: np.ndarray[float],
+        y_lf_test: np.ndarray[float],
+        x_hf: np.ndarray[float],
+        y_hf: np.ndarray[float],
+        x_hf_test: np.ndarray[float],
+        y_hf_test: np.ndarray[float],
+        spline_order_lf: int = 3,
+        width_lf: list = [1, 2, 1],
+        grid_lf: int = 3,
+        opt_lf: str = "LBFGS",
+        spline_order_mf: int = 3,
+        width_mf: list = [1, 2, 1],
+        grid_mf: int = 3,
+        opt_mf: str = "LBFGS",
+    ):
+        # Init the multifidelity model data
+        mf_model.MFModel.__init__(self, x_lf, y_lf, x_hf, y_hf)
 
-    # Define the example function bounds and dimensions here
-    dim = mf_example.dimensions
-    xmin = mf_example.bounds[0][0]
-    xmax = mf_example.bounds[0][1]
+        # Create the LF KAN model using low fidelity data
+        self.lf_kan_model = KANModel(
+            x_mat=self.x_lf,
+            y_vec=self.y_lf,
+            x_mat_test=x_lf_test,
+            y_vec_test=y_lf_test,
+            spline_order=spline_order_lf,
+            width=width_lf,
+            grid=grid_lf,
+            opt=opt_lf,
+        )
 
-    n_lf = 11  # number of low fidelity points
-    n_hf = 100  # number of high fidelity points
-    n_test = 40  # number of test points
+        # Evaluate the LF KAN model at the HF locations
+        y_lf_at_hf = self.lf_kan_model.evaluate(self.x).numpy()
+        y_lf_at_hf_test = self.lf_kan_model.evaluate(x_hf_test).numpy()
 
-    # Generate the analytical functions
-    hf_fxn = mf_example.high_fidelity
-    lf_fxn = mf_example.low_fidelity
+        # Generate the MF KAN model by combining the evaluated data set with the HF data
+        x_mf = np.vstack((self.x, y_lf_at_hf))
+        x_mf_test = np.vstack((x_hf_test, y_lf_at_hf_test))
 
-    X_lf = np.linspace(xmin, xmax, n_lf, dtype=np.float32).reshape(-1, 1)
-    y_lf = lf_fxn(X_lf)
+        self.mf_kan_model = KANModel(
+            x_mat=x_mf,
+            y_vec=self.y,
+            x_mat_test=x_mf_test,
+            y_vec_test=y_hf_test,
+            spline_order=spline_order_mf,
+            width=width_mf,
+            grid=grid_mf,
+            opt=opt_mf,
+        )
 
-    X_hf = np.linspace(xmin, xmax, n_hf, dtype=np.float32).reshape(-1, 1)
-    y_hf = hf_fxn(X_hf)
-
-    X_test = np.linspace(xmin, xmax, n_test, dtype=np.float32).reshape(-1, 1)
-    y_lf_test = lf_fxn(X_test)
-    y_hf_test = hf_fxn(X_test)
-
-    plot_name = mf_example.name + " Samples"
-
-    ax = mf_example.plot_functions(name=plot_name)
-
-    ax.scatter(X_hf, y_hf, color="black", label="HF samples", marker="o")
-    ax.scatter(X_lf, y_lf, color="blue", label="LF samples", marker="o")
-
-    plt.grid()
-    plt.legend()
-    plt.show()
-
-    forrester_kan = KANModel(X_hf, y_hf)
-
-    forrester_kan.plot()
-
-
-# test_kan()
+    def evaluate(self, x):
+        return
