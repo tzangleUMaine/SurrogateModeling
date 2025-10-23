@@ -76,7 +76,6 @@ class Model:
             ax.set_ylabel("f(x)")
 
             ax.plot(x_test, y_hat, color=color, label=label, linestyle=linestyle)
-            ax.legend()
             return ax
         elif self.d == 2:
             # Read in bounds
@@ -106,7 +105,6 @@ class Model:
             ax.plot_surface(
                 X1, X2, y_hat, color=color, label=label, linestyle=linestyle
             )
-            ax.legend()
             return ax
 
     def plot_rms_error(
@@ -159,7 +157,6 @@ class Model:
             ax.set_ylabel("Error")
 
             ax.plot(x_test, error, color=color, label=label, linestyle=linestyle)
-            ax.legend()
             return ax
         elif self.d == 2:
             # Read in bounds
@@ -191,7 +188,6 @@ class Model:
             ax.plot_surface(
                 X1, X2, error, color=color, label=label, linestyle=linestyle
             )
-            ax.legend()
             return ax
 
     def model_error(self, x_test, y_test):

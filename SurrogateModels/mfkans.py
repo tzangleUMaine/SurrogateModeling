@@ -28,6 +28,7 @@ class KANModel(kan.KAN, model.Model):
         width: list = [1, 2, 1],
         grid: int = 3,
         opt: str = "LBFGS",
+        n_iter: int = 100,
     ):
         kan.KAN.__init__(
             self, width=width, grid=grid, k=spline_order, seed=1, device=DEVICE
@@ -41,7 +42,7 @@ class KANModel(kan.KAN, model.Model):
             x_mat_tensor, y_vec_tensor, x_mat_tensor, y_vec_test_tensor, device=DEVICE
         )
 
-        self.fit(dataset=self.dataset, opt=opt, steps=100)
+        self.fit(dataset=self.dataset, opt=opt, steps=n_iter)
 
     def evaluate(self, x):
         x_tensor = torch.from_numpy(x)
@@ -91,10 +92,12 @@ class MFKANModel(mf_model.MFModel):
         width_lf: list = [1, 2, 1],
         grid_lf: int = 3,
         opt_lf: str = "LBFGS",
+        n_iter_lf: int = 100,
         spline_order_mf: int = 3,
         width_mf: list = [1, 2, 1],
         grid_mf: int = 3,
         opt_mf: str = "LBFGS",
+        n_iter_mf: int = 100,
     ):
         # Init the multifidelity model data
         mf_model.MFModel.__init__(self, x_lf, y_lf, x_hf, y_hf)
@@ -109,6 +112,7 @@ class MFKANModel(mf_model.MFModel):
             width=width_lf,
             grid=grid_lf,
             opt=opt_lf,
+            n_iter=n_iter_lf,
         )
 
         # Evaluate the LF KAN model at the HF locations
@@ -116,8 +120,8 @@ class MFKANModel(mf_model.MFModel):
         y_lf_at_hf_test = self.lf_kan_model.evaluate(x_hf_test).numpy()
 
         # Generate the MF KAN model by combining the evaluated data set with the HF data
-        x_mf = np.vstack((self.x, y_lf_at_hf))
-        x_mf_test = np.vstack((x_hf_test, y_lf_at_hf_test))
+        x_mf = np.hstack((self.x, y_lf_at_hf))
+        x_mf_test = np.hstack((x_hf_test, y_lf_at_hf_test))
 
         self.mf_kan_model = KANModel(
             x_mat=x_mf,
@@ -128,7 +132,18 @@ class MFKANModel(mf_model.MFModel):
             width=width_mf,
             grid=grid_mf,
             opt=opt_mf,
+            n_iter=n_iter_mf,
         )
 
     def evaluate(self, x):
-        return
+        return self.forward(x)
+
+    def forward(self, x):
+        # Evaluate the LF KAN model at the HF locations
+        y_lf_at_x = self.lf_kan_model.evaluate(x).numpy().reshape(-1, 1)
+
+        # Generate the MF input by combining x and y_lf_at_x
+        x_mf = np.hstack((x, y_lf_at_x))
+
+        # Evaluate the MF KAN model
+        return self.mf_kan_model.evaluate(x_mf)
