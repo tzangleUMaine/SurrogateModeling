@@ -230,8 +230,8 @@ class Model:
 
     @staticmethod
     def generate_grid_array(xmin=-2, xmax=2, ymin=-2, ymax=2, num=50):
-        x = np.linspace(xmin, xmax, num)
-        y = np.linspace(ymin, ymax, num)
+        x = np.linspace(xmin, xmax, num, dtype=np.float32)
+        y = np.linspace(ymin, ymax, num, dtype=np.float32)
         X, Y = np.meshgrid(x, y)
         grid = np.column_stack([X.ravel(), Y.ravel()])
         return grid

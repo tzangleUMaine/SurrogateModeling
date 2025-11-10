@@ -120,7 +120,7 @@ class CompositeKANModel(kan.KAN, model.Model):
     #     y_hat = (1.0 - self.alpha) * y_kan + self.alpha * y_linear
     #     return y_hat
     def forward(self, x_in, singularity_avoiding=False, y_th=1000.0):
-        y_linear = 0  # self._linear_nn(x_in)
+        y_linear = self._linear_nn(x_in)
         y_kan = kan.KAN.forward(
             self, x_in, singularity_avoiding=singularity_avoiding, y_th=y_th
         )
