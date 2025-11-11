@@ -30,11 +30,13 @@ class KANModel(kan.KAN, model.Model):
         grid: int = 3,
         opt: str = "LBFGS",
         n_iter: int = 100,
+        use_canned_dataset: bool = False,
     ):
         kan.KAN.__init__(
             self, width=width, grid=grid, k=spline_order, seed=1, device=DEVICE
         )
         model.Model.__init__(self, x_mat=x_mat, y_vec=y_vec)
+
         x_mat_tensor = torch.from_numpy(x_mat)
         y_vec_tensor = torch.from_numpy(y_vec)
         x_mat_test_tensor = torch.from_numpy(x_mat_test)
@@ -46,6 +48,10 @@ class KANModel(kan.KAN, model.Model):
             y_vec_test_tensor,
             device=DEVICE,
         )
+
+        if use_canned_dataset:
+            f = lambda x: torch.exp(torch.sin(torch.pi * x[:, [0]]) + x[:, [1]] ** 2)
+            self.dataset = kan.create_dataset(f, n_var=2, device=DEVICE)
 
         self.results = self.fit(dataset=self.dataset, opt=opt, steps=n_iter)
 
@@ -205,10 +211,10 @@ class MFKANModel(mf_model.MFModel):
 
     def forward(self, x):
         # Evaluate the LF KAN model at the HF locations
-        y_lf_at_x = self.lf_kan_model.forward(x).numpy().reshape(-1, 1)
+        y_lf_at_x = self.lf_kan_model.evaluate(x).numpy().reshape(-1, 1)
 
         # Generate the MF input by combining x and y_lf_at_x
         x_mf = np.hstack((x, y_lf_at_x))
 
         # Evaluate the MF KAN model
-        return self.mf_kan_model.forward(x_mf)
+        return self.mf_kan_model.evaluate(x_mf)
