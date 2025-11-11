@@ -40,7 +40,11 @@ class KANModel(kan.KAN, model.Model):
         x_mat_test_tensor = torch.from_numpy(x_mat_test)
         y_vec_test_tensor = torch.from_numpy(y_vec_test)
         self.dataset = KANModel.create_dataset_from_test_train_data(
-            x_mat_tensor, y_vec_tensor, x_mat_tensor, y_vec_test_tensor, device=DEVICE
+            x_mat_tensor,
+            y_vec_tensor,
+            x_mat_test_tensor,
+            y_vec_test_tensor,
+            device=DEVICE,
         )
 
         self.results = self.fit(dataset=self.dataset, opt=opt, steps=n_iter)
@@ -100,7 +104,11 @@ class CompositeKANModel(kan.KAN, model.Model):
         x_mat_test_tensor = torch.from_numpy(x_mat_test)
         y_vec_test_tensor = torch.from_numpy(y_vec_test)
         self.dataset = KANModel.create_dataset_from_test_train_data(
-            x_mat_tensor, y_vec_tensor, x_mat_tensor, y_vec_test_tensor, device=DEVICE
+            x_mat_tensor,
+            y_vec_tensor,
+            x_mat_test_tensor,
+            y_vec_test_tensor,
+            device=DEVICE,
         )
 
         # Get the input and output shape of the network
@@ -197,10 +205,10 @@ class MFKANModel(mf_model.MFModel):
 
     def forward(self, x):
         # Evaluate the LF KAN model at the HF locations
-        y_lf_at_x = self.lf_kan_model.evaluate(x).numpy().reshape(-1, 1)
+        y_lf_at_x = self.lf_kan_model.forward(x).numpy().reshape(-1, 1)
 
         # Generate the MF input by combining x and y_lf_at_x
         x_mf = np.hstack((x, y_lf_at_x))
 
         # Evaluate the MF KAN model
-        return self.mf_kan_model.evaluate(x_mf)
+        return self.mf_kan_model.forward(x_mf)

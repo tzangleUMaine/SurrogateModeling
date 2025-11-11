@@ -29,7 +29,7 @@ class MLPNetwork(torch.nn.Module, model.Model):
         X_test: torch.Tensor = torch.Tensor(),
         y_test: torch.Tensor = torch.Tensor(),
         hidden_layer_size: list[int] = [10, 8],
-        activation: type[torch.nn.Module] = torch.nn.Tanh,
+        activation: type[torch.nn.Module] = torch.nn.Tanh(),
         loss: torch.optim.Optimizer = torch.nn.MSELoss(),
         epochs: int = 500,
         learning_rate=0.001,
@@ -42,6 +42,12 @@ class MLPNetwork(torch.nn.Module, model.Model):
     ):
         torch.nn.Module.__init__(self)
         model.Model.__init__(self, X, y)
+
+        # Convert numpy arrays into tensors
+        X_tensor = torch.from_numpy(X)
+        y_tensor = torch.from_numpy(y)
+        X_test_tensor = torch.from_numpy(X_test)
+        y_test_tensor = torch.from_numpy(y_test)
 
         # Hyper parameters
         self.epochs = epochs
@@ -96,9 +102,6 @@ class MLPNetwork(torch.nn.Module, model.Model):
             self.parameters(), lr=learning_rate, max_iter=50
         )  # , weight_decay = weight_decay)
 
-        # print(self.weight)
-        print(X)
-
         # Try loading weights from file, if not train the network!
         if load_weights:
             self.load_state_dict(torch.load(weight_file))
@@ -121,8 +124,9 @@ class MLPNetwork(torch.nn.Module, model.Model):
 
     # Evaluate function defines method for use in generic model class
     def evaluate(self, x_in):
+        x_tensor = torch.from_numpy(x_in)
         with torch.no_grad():
-            return self.forward(x_in)
+            return self.forward(x_tensor)
 
     # Calculates the training error using the given loss function
     def training_accuracy(self, device=DEVICE):
@@ -183,9 +187,9 @@ class MLPNetwork(torch.nn.Module, model.Model):
             train_error = self.training_accuracy()
             test_error = self.testing_accuracy()
             if t % self.report_steps == 0:
-                print(f"----Progress Update----")
-                print(f"Epoch: {t} \n")
-                print(f"Training Error: {train_error} \n")
+                print(
+                    f"Epoch: {t}   || Train Error: {train_error} || Test Error: {test_error}\n"
+                )
             train_error_history.append(train_error)
             test_error_history.append(test_error)
 
@@ -226,7 +230,6 @@ class CompositeNN(torch.nn.Module, mf_model.MFModel):
         X_test=torch.Tensor(),
         y_test=torch.Tensor(),
         layers_nl=[10, 8],
-        layers_linear=[10, 10],
         activation_nl=torch.nn.Tanh(),
         loss=torch.nn.MSELoss(),
         epochs=1000,
@@ -237,6 +240,12 @@ class CompositeNN(torch.nn.Module, mf_model.MFModel):
     ):
         torch.nn.Module.__init__(self)
         model.Model.__init__(self, X, y)
+
+        # Convert numpy arrays into tensors
+        X_tensor = torch.from_numpy(X)
+        y_tensor = torch.from_numpy(y)
+        X_test_tensor = torch.from_numpy(X_test)
+        y_test_tensor = torch.from_numpy(y_test)
 
         # Hyper parameters
         self.epochs = epochs
@@ -256,17 +265,19 @@ class CompositeNN(torch.nn.Module, mf_model.MFModel):
 
         # Store the model data
         self.training_dataloader = DataLoader(
-            list(zip(X, y)), shuffle=True, batch_size=self.batch_size
+            list(zip(X_tensor, y_tensor)), shuffle=True, batch_size=self.batch_size
         )
 
         # Store the test data
         self.test_dataloader = DataLoader(
-            list(zip(X_test, y_test)), shuffle=False, batch_size=self.batch_size
+            list(zip(X_test_tensor, y_test_tensor)),
+            shuffle=False,
+            batch_size=self.batch_size,
         )
 
         # Generate the neural network
-        __, input_size = X.shape
-        __, output_size = y.shape
+        __, input_size = X_tensor.shape
+        __, output_size = y_tensor.shape
 
         # Setup non-linear network shape
         self._nl_layers = []
@@ -281,26 +292,13 @@ class CompositeNN(torch.nn.Module, mf_model.MFModel):
         self._nl_layers.append(torch.nn.Linear(prev_size, output_size))
         self._nl_layers = torch.nn.Sequential(*self._nl_layers)
 
-        # Setup linear network shape
-        self._layers_linear = []
-        if layers_linear == []:
-            self._layers_linear.append(torch.nn.Linear(prev_size, output_size))
-        else:
-            self._layers_linear.append(torch.nn.Linear(input_size, layers_linear[0]))
-            prev_size = layers_linear[0]
-
-            for layer_size in layers_linear[1:-1]:
-                self._layers_linear.append(torch.nn.Linear(prev_size, layer_size))
-                prev_size = layer_size
-            self._layers_linear.append(torch.nn.Linear(prev_size, output_size))
-        self._layers_linear = torch.nn.Sequential(*self._layers_linear)
+        # Generate a linear neural network to create a shortcut for model training
+        self._linear_layers = torch.nn.Linear(
+            in_features=input_size, out_features=output_size, bias=True
+        ).to(DEVICE)
 
         # Apply initial weights
         self.apply(self.init_weights)
-
-        # Set weight for composite network combination
-        self.alpha = torch.nn.parameter.Parameter(torch.tensor([0.0001]))
-        # self.alpha = 0.999
 
         # Check whether the network is just being setup or if traing is specified
         if train:
@@ -311,7 +309,7 @@ class CompositeNN(torch.nn.Module, mf_model.MFModel):
             )
 
             # Run training on network
-            self.training_error, self.testing_error, self.alpha_history = self.train()
+            self.training_error, self.testing_error = self.train()
 
     # Simple function to create csv files of dataloader to check output distributions
     def dataloader_write(self, file_name):
@@ -325,14 +323,15 @@ class CompositeNN(torch.nn.Module, mf_model.MFModel):
                     csv_writer.writerow(X[:][1])
 
     def forward(self, x):
-        return (1.0 - self.alpha) * self._layers_linear(x) + (
-            self.alpha
-        ) * self._nl_layers(x)
+        y_linear = self._linear_layers(x)
+        y_nl = self._nl_layers(x)
+        return y_linear + y_nl
 
     # Evaluate function defines method for use in generic model class
     def evaluate(self, x_in):
+        x_tensor = torch.from_numpy(x_in)
         with torch.no_grad():
-            return self.forward(x_in)
+            return self.forward(x_tensor)
 
     # Calculates the training error using the given loss function
     def training_accuracy(self, device=DEVICE):
@@ -378,7 +377,6 @@ class CompositeNN(torch.nn.Module, mf_model.MFModel):
         self.to(device)
         train_error_history = []
         test_error_history = []
-        alpha_history = []
         for t in range(self.epochs):
             # Train loop
             for X, y in self.training_dataloader:
@@ -401,13 +399,13 @@ class CompositeNN(torch.nn.Module, mf_model.MFModel):
             test_error = self.testing_accuracy()
             if t % self.report_steps == 0:
                 print(f"----Progress Update----")
-                print(f"Epoch: {t} \n")
-                print(f"Training Error: {train_error} \n")
+                print(
+                    f"Epoch: {t}   || Train Error: {train_error} || Test Error: {test_error}\n"
+                )
             train_error_history.append(train_error)
             test_error_history.append(test_error)
-            alpha_history.append(self.alpha.clone().detach().numpy())
 
-        return train_error_history, test_error_history, alpha_history
+        return train_error_history, test_error_history
 
     # def loss_function(self,weight_decay = 0.001):
     #     return
@@ -437,21 +435,6 @@ class CompositeNN(torch.nn.Module, mf_model.MFModel):
 
         # Plots errors output from training to show path to parameters
 
-    def plot_alpha_history(self, name):
-        epoch_number = np.arange(0, self.epochs, 1)
-        plt.figure(name)
-        plt.title(name)
-        plt.plot(
-            epoch_number,
-            self.alpha_history,
-            color="blue",
-            label="Train",
-            linestyle="-",
-        )
-        plt.legend()
-        plt.xlabel("Epoch")
-        plt.ylabel("Alpha")
-
     # def visual_graph(self):
     #     __, input_size = self.x.shape
     #     model_graph = draw_graph(self(), input_size=(2,input_size))
@@ -475,7 +458,6 @@ class MultiFidelityNN(torch.nn.Module, mf_model.MFModel):
         X_hf_test,
         y_hf_test,
         lf_nn_dim,
-        hf_linear_nn_dim,
         hf_nl_nn_dim,
         epochs_lf=500,
         epochs_mf=1000,
@@ -501,22 +483,21 @@ class MultiFidelityNN(torch.nn.Module, mf_model.MFModel):
             train=True,
         )
 
-        # Create lf approximations of the high fidelity data using the lf model
-        yhat_lf = self.low_fidelity_nn.evaluate(X_hf)
-        x_hf_prime = torch.cat((yhat_lf, X_hf), dim=1)
+        # Evaluate the LF KAN model at the HF locations
+        y_lf_at_hf = self.low_fidelity_nn.evaluate(self.x).numpy()
+        y_lf_at_hf_test = self.low_fidelity_nn.evaluate(X_hf_test).numpy()
 
-        # Shift the test data
-        yhat_lf_test = self.low_fidelity_nn.evaluate(X_hf_test)
-        x_hf_prime_test = torch.cat((yhat_lf_test, X_hf_test), dim=1)
+        # Generate the MF KAN model by combining the evaluated data set with the HF data
+        x_mf = np.hstack((self.x, y_lf_at_hf))
+        x_mf_test = np.hstack((X_hf_test, y_lf_at_hf_test))
 
         # Train composite NN
         self.high_fidelity_nn = CompositeNN(
-            x_hf_prime,
+            x_mf,
             y_hf,
-            X_test=x_hf_prime_test,
+            X_test=x_mf_test,
             y_test=y_hf_test,
             layers_nl=hf_nl_nn_dim,
-            layers_linear=hf_linear_nn_dim,
             epochs=epochs_mf,
             learning_rate=lr_mf,
             weight_decay=wd_mf,
@@ -525,37 +506,18 @@ class MultiFidelityNN(torch.nn.Module, mf_model.MFModel):
         )
 
     def evaluate(self, x):
-        return self.forward(x)
+        with torch.no_grad():
+            return self.forward(x)
 
     def forward(self, x):
-        yhat_lf = self.low_fidelity_nn.evaluate(x)
-        x_hf = torch.cat((yhat_lf, x), dim=0)
-        yhat_hf = self.high_fidelity_nn.evaluate(x_hf)
-        return yhat_hf
+        # Evaluate the LF KAN model at the HF locations
+        y_lf_at_x = self.low_fidelity_nn.evaluate(x).numpy().reshape(-1, 1)
 
-    # Private function that outputs both mf and lf approx of x
-    def _forward_loud(self, x):
-        yhat_lf = self.low_fidelity_nn.evaluate(x)
-        x_hf = torch.cat((yhat_lf, x), dim=1)
-        yhat_hf = self.high_fidelity_nn.evaluate(x_hf)
-        return yhat_hf, yhat_lf
+        # Generate the MF input by combining x and y_lf_at_x
+        x_mf = np.hstack((x, y_lf_at_x))
 
-    def generate_plots(self):
-        self.plot_data()
-
-
-class Trainer:
-
-    def __init__(
-        self,
-        model: torch.nn.Module,
-        optimizer: torch.optim.Optimizer,
-        loss: torch.nn.Module,
-    ):
-
-        self.model = model
-        self.optimizer = optimizer
-        self.loss = loss
+        # Evaluate the MF KAN model
+        return self.high_fidelity_nn.evaluate(x_mf)
 
 
 # Function used for testing LowFidelity NN capabilities
