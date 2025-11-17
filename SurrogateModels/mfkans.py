@@ -30,7 +30,6 @@ class KANModel(kan.KAN, model.Model):
         grid: int = 3,
         opt: str = "LBFGS",
         n_iter: int = 100,
-        use_canned_dataset: bool = False,
     ):
         kan.KAN.__init__(
             self, width=width, grid=grid, k=spline_order, seed=1, device=DEVICE
@@ -49,9 +48,11 @@ class KANModel(kan.KAN, model.Model):
             device=DEVICE,
         )
 
-        if use_canned_dataset:
-            f = lambda x: torch.exp(torch.sin(torch.pi * x[:, [0]]) + x[:, [1]] ** 2)
-            self.dataset = kan.create_dataset(f, n_var=2, device=DEVICE)
+        mins = x_mat.min(axis=0)
+        maxs = x_mat.max(axis=0)
+
+        self.bounds = [[float(mn), float(mx)] for mn, mx in zip(mins, maxs)]
+        self.scaling = data_handler.scale_array
 
         self.results = self.fit(dataset=self.dataset, opt=opt, steps=n_iter)
 
@@ -116,6 +117,11 @@ class CompositeKANModel(kan.KAN, model.Model):
             y_vec_test_tensor,
             device=DEVICE,
         )
+
+        mins = x_mat.min(axis=0)
+        maxs = x_mat.max(axis=0)
+
+        self.bounds = [[float(mn), float(mx)] for mn, mx in zip(mins, maxs)]
 
         # Get the input and output shape of the network
         __, input_size = x_mat.shape
