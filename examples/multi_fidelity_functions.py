@@ -25,7 +25,7 @@ class MultiFidelityTemplate:
     def plot_high_fidelity(
         self,
         name="Model",
-        color="black",
+        color="blue",
         label="high fidelity fxn",
         linestyle="solid",
         ax=None,
@@ -44,7 +44,7 @@ class MultiFidelityTemplate:
     def plot_low_fidelity(
         self,
         name="Model",
-        color="blue",
+        color="black",
         label="low fidelity fxn",
         linestyle="solid",
         ax=None,
@@ -60,9 +60,9 @@ class MultiFidelityTemplate:
             n_samples=100,
         )
 
-    def plot_functions(self, name="Model"):
-        ax = self.plot_low_fidelity(name=name)
-        ax = self.plot_high_fidelity(name=name, ax=ax)
+    def plot_functions(self, name="Model", linestyle="solid", ax=None):
+        ax = self.plot_low_fidelity(name=name, linestyle=linestyle, ax=ax)
+        ax = self.plot_high_fidelity(name=name, linestyle=linestyle, ax=ax)
         return ax
 
     def _plot_function(

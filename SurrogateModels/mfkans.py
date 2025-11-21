@@ -52,7 +52,6 @@ class KANModel(kan.KAN, model.Model):
         maxs = x_mat.max(axis=0)
 
         self.bounds = [[float(mn), float(mx)] for mn, mx in zip(mins, maxs)]
-        self.scaling = data_handler.scale_array
 
         self.results = self.fit(dataset=self.dataset, opt=opt, steps=n_iter)
 
@@ -139,18 +138,21 @@ class CompositeKANModel(kan.KAN, model.Model):
     #     y_linear = self._linear_nn(x_in)
     #     y_hat = (1.0 - self.alpha) * y_kan + self.alpha * y_linear
     #     return y_hat
-    def forward(self, x_in, singularity_avoiding=False, y_th=1000.0):
+    def forward(self, x_in, singularity_avoiding=False, y_th=1000.0, loud=False):
         y_linear = self._linear_nn(x_in)
         y_kan = kan.KAN.forward(
             self, x_in, singularity_avoiding=singularity_avoiding, y_th=y_th
         )
         y_hat = y_linear + y_kan
+        if loud == True:
+            print(f"linear output: {y_linear/y_hat}")
+            print(f"non-lin output: {y_kan/y_hat}")
         return y_hat
 
-    def evaluate(self, x_in):
+    def evaluate(self, x_in, loud=False):
         x_tensor = torch.from_numpy(x_in)
         with torch.no_grad():
-            return self.forward(x_tensor)
+            return self.forward(x_tensor, loud=loud)
 
 
 class MFKANModel(mf_model.MFModel):
@@ -193,7 +195,16 @@ class MFKANModel(mf_model.MFModel):
 
         # Evaluate the LF KAN model at the HF locations
         y_lf_at_hf = self.lf_kan_model.evaluate(self.x).numpy()
+        self.lf_at_hf_min = y_lf_at_hf.min()
+        self.lf_at_hf_max = y_lf_at_hf.max()
+        y_lf_at_hf = data_handler.scale_array(
+            y_lf_at_hf, self.lf_at_hf_min, self.lf_at_hf_max
+        )
+
         y_lf_at_hf_test = self.lf_kan_model.evaluate(x_hf_test).numpy()
+        y_lf_at_hf_test = data_handler.scale_array(
+            y_lf_at_hf_test, self.lf_at_hf_min, self.lf_at_hf_max
+        )
 
         # Generate the MF KAN model by combining the evaluated data set with the HF data
         x_mf = np.hstack((self.x, y_lf_at_hf))
@@ -211,16 +222,19 @@ class MFKANModel(mf_model.MFModel):
             n_iter=n_iter_mf,
         )
 
-    def evaluate(self, x):
+    def evaluate(self, x, loud=False):
         with torch.no_grad():
-            return self.forward(x)
+            return self.forward(x, loud=loud)
 
-    def forward(self, x):
+    def forward(self, x, loud=False):
         # Evaluate the LF KAN model at the HF locations
         y_lf_at_x = self.lf_kan_model.evaluate(x).numpy().reshape(-1, 1)
+        y_lf_at_x = data_handler.scale_array(
+            y_lf_at_x, self.lf_at_hf_min, self.lf_at_hf_max
+        )
 
         # Generate the MF input by combining x and y_lf_at_x
         x_mf = np.hstack((x, y_lf_at_x))
 
         # Evaluate the MF KAN model
-        return self.mf_kan_model.evaluate(x_mf)
+        return self.mf_kan_model.evaluate(x_mf, loud=loud)
