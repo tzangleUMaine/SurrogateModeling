@@ -38,7 +38,7 @@ class MultiFidelityTemplate:
             label=label,
             linestyle=linestyle,
             ax=ax,
-            n_samples=100,
+            n_samples=n_samples,
         )
 
     def plot_low_fidelity(
@@ -57,7 +57,7 @@ class MultiFidelityTemplate:
             label=label,
             linestyle=linestyle,
             ax=ax,
-            n_samples=100,
+            n_samples=n_samples,
         )
 
     def plot_functions(self, name="Model", linestyle="solid", ax=None):
@@ -96,7 +96,7 @@ class MultiFidelityTemplate:
 
             ax.plot(x_test, y_test, color=color, label=label, linestyle=linestyle)
             return ax
-        elif self.d == 2:
+        elif self.dimensions == 2:
             # Read in bounds
             x1_min = self.bounds[0][0]
             x1_max = self.bounds[0][1]

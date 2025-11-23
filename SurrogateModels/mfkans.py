@@ -27,12 +27,14 @@ class KANModel(kan.KAN, model.Model):
         y_vec_test: np.ndarray[float] = None,
         spline_order: int = 3,
         width: list = [1, 2, 1],
-        grid: int = 3,
+        grid: list = [3],
         opt: str = "LBFGS",
         n_iter: int = 100,
     ):
+        g = grid.pop(0)
+
         kan.KAN.__init__(
-            self, width=width, grid=grid, k=spline_order, seed=1, device=DEVICE
+            self, width=width, grid=g, k=spline_order, seed=1, device=DEVICE
         )
         model.Model.__init__(self, x_mat=x_mat, y_vec=y_vec)
 
@@ -53,12 +55,28 @@ class KANModel(kan.KAN, model.Model):
 
         self.bounds = [[float(mn), float(mx)] for mn, mx in zip(mins, maxs)]
 
-        self.results = self.fit(dataset=self.dataset, opt=opt, steps=n_iter)
+        self.results = self.fit(
+            dataset=self.dataset,
+            opt=opt,
+            steps=n_iter,
+        )
+        for g in grid:
+            self.refine_model(g)
+            self.results = self.fit(
+                dataset=self.dataset,
+                opt=opt,
+                steps=n_iter,
+            )
 
     def evaluate(self, x):
         x_tensor = torch.from_numpy(x)
         with torch.no_grad():
             return self.forward(x_tensor)
+
+    def refine_model(self, new_grid: int = None):
+        refined = self.refine(new_grid)
+        self.__dict__.update(refined.__dict__)
+        return self
 
     @classmethod
     def create_dataset_from_test_train_data(
@@ -131,7 +149,12 @@ class CompositeKANModel(kan.KAN, model.Model):
             in_features=input_size, out_features=output_size, bias=True
         ).to(DEVICE)
 
+        # refinement_iterations = [5, 10, 20, 50, 100, 200, 500]
+
         self.results = self.fit(dataset=self.dataset, opt=opt, steps=n_iter)
+        # for grid in refinement_iterations:
+        #     self.refine(grid)
+        #     self.results = self.fit(dataset=self.dataset, opt=opt, steps=n_iter)
 
     # def forward(self, x_in, singularity_avoiding=False, y_th=1000.0):
     #     y_kan = kan.KAN.forward(self,x_in,singularity_avoiding=singularity_avoiding,y_th=y_th)

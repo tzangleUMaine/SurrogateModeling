@@ -43,7 +43,6 @@ class MFModel(model.Model):
                     fig = plt.figure(name)
                     ax = fig.add_subplot(projection="3d")
                 ax.set_title(name)
-                ax.legend()
                 ax.set_xlabel("x1")
                 ax.set_ylabel("x2")
                 ax.set_zlabel("y(x)")
