@@ -115,12 +115,13 @@ class CompositeKANModel(kan.KAN, model.Model):
         y_vec_test: np.ndarray[float] = None,
         spline_order: int = 3,
         width: list = [1, 2, 1],
-        grid: int = 3,
+        grid: int = [3],
         opt: str = "LBFGS",
         n_iter: int = 100,
     ):
+        g = grid.pop(0)
         kan.KAN.__init__(
-            self, width=width, grid=grid, k=spline_order, seed=1, device=DEVICE
+            self, width=width, grid=g, k=spline_order, seed=1, device=DEVICE
         )
         model.Model.__init__(self, x_mat=x_mat, y_vec=y_vec)
         x_mat_tensor = torch.from_numpy(x_mat)
@@ -141,26 +142,24 @@ class CompositeKANModel(kan.KAN, model.Model):
         self.bounds = [[float(mn), float(mx)] for mn, mx in zip(mins, maxs)]
 
         # Get the input and output shape of the network
-        __, input_size = x_mat.shape
-        __, output_size = y_vec.shape
+        __, self.input_size = x_mat.shape
+        __, self.output_size = y_vec.shape
 
         # Generate a linear neural network to create a shortcut for model training
         self._linear_nn = torch.nn.Linear(
-            in_features=input_size, out_features=output_size, bias=True
+            in_features=self.input_size, out_features=self.output_size, bias=True
         ).to(DEVICE)
 
-        # refinement_iterations = [5, 10, 20, 50, 100, 200, 500]
-
         self.results = self.fit(dataset=self.dataset, opt=opt, steps=n_iter)
-        # for grid in refinement_iterations:
-        #     self.refine(grid)
-        #     self.results = self.fit(dataset=self.dataset, opt=opt, steps=n_iter)
 
-    # def forward(self, x_in, singularity_avoiding=False, y_th=1000.0):
-    #     y_kan = kan.KAN.forward(self,x_in,singularity_avoiding=singularity_avoiding,y_th=y_th)
-    #     y_linear = self._linear_nn(x_in)
-    #     y_hat = (1.0 - self.alpha) * y_kan + self.alpha * y_linear
-    #     return y_hat
+        for g in grid:
+            self.refine_model(g)
+            self.results = self.fit(
+                dataset=self.dataset,
+                opt=opt,
+                steps=n_iter,
+            )
+
     def forward(self, x_in, singularity_avoiding=False, y_th=1000.0, loud=False):
         y_linear = self._linear_nn(x_in)
         y_kan = kan.KAN.forward(
@@ -171,6 +170,16 @@ class CompositeKANModel(kan.KAN, model.Model):
             print(f"linear output: {y_linear/y_hat}")
             print(f"non-lin output: {y_kan/y_hat}")
         return y_hat
+
+    def refine_model(self, new_grid: int = None):
+        refined = self.refine(new_grid)
+        self.__dict__.update(refined.__dict__)
+        # Generate a linear neural network to create a shortcut for model training
+        self._linear_nn = torch.nn.Linear(
+            in_features=self.input_size, out_features=self.output_size, bias=True
+        ).to(DEVICE)
+        print("Does it make it here?")
+        return self
 
     def evaluate(self, x_in, loud=False):
         x_tensor = torch.from_numpy(x_in)
@@ -191,12 +200,12 @@ class MFKANModel(mf_model.MFModel):
         y_hf_test: np.ndarray[float],
         spline_order_lf: int = 3,
         width_lf: list = [1, 2, 1],
-        grid_lf: int = 3,
+        grid_lf: int = [3],
         opt_lf: str = "LBFGS",
         n_iter_lf: int = 100,
         spline_order_mf: int = 3,
         width_mf: list = [1, 2, 1],
-        grid_mf: int = 3,
+        grid_mf: int = [3],
         opt_mf: str = "LBFGS",
         n_iter_mf: int = 100,
     ):

@@ -8,7 +8,7 @@ import typing
 
 class Kriging(model.Model):
     def __init__(
-        self, x_mat: np.ndarray[float], y_vec: np.ndarray[float], nugget: float = 1e-6
+        self, x_mat: np.ndarray[float], y_vec: np.ndarray[float], nugget: float = 1e-3
     ):
 
         super().__init__(x_mat, y_vec)
@@ -136,7 +136,7 @@ class Kriging(model.Model):
 
 
 class DiffKriging(Kriging):
-    def __init__(self, x_mat, yh, yl, nugget=1e-6):
+    def __init__(self, x_mat, yh, yl, nugget=1e-3):
 
         self.x = x_mat
 

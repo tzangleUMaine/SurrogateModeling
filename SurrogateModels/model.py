@@ -30,7 +30,6 @@ class Model:
             ax.set_xlabel("x")
             ax.set_ylabel("f(x)")
             ax.scatter(self.x, self.y, color=color, label=label, marker=marker)
-            ax.legend()
         if self.d == 2:
             if ax == None:
                 fig = plt.figure(name)
@@ -43,7 +42,6 @@ class Model:
             ax.scatter(
                 self.x[:, 0], self.x[:, 1], self.y[:, 0], color=color, label=label
             )
-            ax.legend()
         return ax
 
     def plot_model(
@@ -193,7 +191,7 @@ class Model:
     def model_error(self, x_test, y_test):
         y_hat = self.evaluate(x_test)
         error = np.sqrt((y_hat - y_test) ** 2)
-        return error / x_test.shape[0]
+        return (error.sum(axis=0) / x_test.shape[0])[0]
 
     def bounded_model_error(self, bounds, fxn_truth, n_samples=100):
         if self.d == 1:

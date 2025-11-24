@@ -238,6 +238,70 @@ class ZhangExample6(MultiFidelityTemplate):
         return self.high_fidelity(0.7 * x) + y_lf_extra.reshape(-1, 1)
 
 
+class ZhangExample7(MultiFidelityTemplate):
+    """Example 7 from
+    "A multi-fidelity surrogate modeling approach for incorporating multiple
+    non-hierarchical low-fidelity data" (2022)   Zhang et al.
+
+    2D input to function
+    """
+
+    def __init__(self):
+        self.bounds = [[0.0, 1.0], [0.0, 1.0]]
+        self.dimensions = 2
+        self.name = "Zhang Example 7"
+
+    def high_fidelity(self, x):
+        y_hf = -np.sin(x[:, 0]) - np.exp(x[:, 1] * 0.01) + 10 + x[:, 1] ** 2 * 0.1
+        return y_hf.reshape(-1, 1)
+
+    def low_fidelity(self, x):
+        y_lf = (
+            -np.sin(x[:, 0])
+            - np.exp(x[:, 1] * 0.01)
+            + 10.3
+            + 0.03 * (x[:, 0] - 0.3) ** 2
+            + (x[:, 1] - 1) ** 2 * 0.1
+        )
+        return y_lf.reshape(-1, 1)
+
+
+class ZhangExample8(MultiFidelityTemplate):
+    """Example 8 from
+    "A multi-fidelity surrogate modeling approach for incorporating multiple
+    non-hierarchical low-fidelity data" (2022)   Zhang et al.
+
+    4D input to function
+    """
+
+    def __init__(self):
+        self.bounds = [
+            [0.5, 1.0],
+            [0.5, 1.0],
+            [0.5, 1.0],
+            [0.5, 1.0],
+        ]
+        self.dimensions = 4
+        self.name = "Zhang Example 8"
+
+    def high_fidelity(self, x):
+        y_hf = (
+            np.sin(5 * np.pi * x[:, 0]) ** 6
+            + 0.1 * (x[:, 1] - 0.5) ** 2
+            + 0.5 * x[:, 1]
+        )
+        return y_hf.reshape(-1, 1)
+
+    def low_fidelity(self, x):
+        y_lf = (
+            0.5 * np.sin(5 * np.pi * x[:, 0]) ** 6
+            + 0.05 * (x[:, 1] - 0.5) ** 2
+            + 0.25 * x[:, 1]
+            + 0.15
+        )
+        return y_lf.reshape(-1, 1)
+
+
 class MengDiscontinuous(MultiFidelityTemplate):
     """Example from Meng and Karniadakis 2020 paper
     "A composite neural network that learns from multi-fidelity data: Application to function approximation and inverse PDE problems"
@@ -308,12 +372,12 @@ class PeaksShifted(MultiFidelityTemplate):
     Utilizes a non-linear scaling to generate data from peaks function"""
 
     def __init__(self):
-        self.bounds = [[-2, 2], [-2, 2]]
+        self.bounds = [[-3.0, 3.0], [-3.0, 3.0]]
         self.dimensions = 2
         self.name = "Peaks Function Shifted"
 
     def high_fidelity(self, x):
-        return 2.0 * self.low_fidelity(0.8 * x) + (0.13 * x[:, 0] * x[:, 1]).reshape(
+        return 2.0 * self.low_fidelity(0.95 * x) + (0.5 * x[:, 0] * x[:, 1]).reshape(
             -1, 1
         )
 
