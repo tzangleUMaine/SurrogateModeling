@@ -377,9 +377,9 @@ class PeaksShifted(MultiFidelityTemplate):
         self.name = "Peaks Function Shifted"
 
     def high_fidelity(self, x):
-        return 2.0 * self.low_fidelity(0.95 * x) + (0.5 * x[:, 0] * x[:, 1]).reshape(
-            -1, 1
-        )
+        return 3.0 * self.low_fidelity(0.95 * x) + (
+            0.15 * x[:, 0] * x[:, 1] + 12
+        ).reshape(-1, 1)
 
     def low_fidelity(self, x):
         y_lf = (

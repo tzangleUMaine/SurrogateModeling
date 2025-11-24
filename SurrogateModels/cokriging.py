@@ -6,10 +6,12 @@ import kriging
 
 
 class CoKriging(mf_model.MFModel):
-    def __init__(self, x_lf, y_lf, x_hf, y_hf):
+    def __init__(self, x_lf, y_lf, x_hf, y_hf, nugget: float = 1e-3):
 
         # Init the multifidelity model data
         super().__init__(x_lf, y_lf, x_hf, y_hf)
+
+        self.nugget = nugget
 
         # Store the shapes of the input matrices
         self.n_hf, self.d = np.shape(self.x)
@@ -17,7 +19,7 @@ class CoKriging(mf_model.MFModel):
         self.n = self.n_lf + self.n_hf
 
         # Set up the low fidelity kriging model
-        self.kriging_lf = kriging.Kriging(self.x_lf, self.y_lf)
+        self.kriging_lf = kriging.Kriging(self.x_lf, self.y_lf, nugget=self.nugget)
 
         # Match find values for the low fidelity data set at exactly the same
         # locations as the high fidelity data
@@ -25,11 +27,13 @@ class CoKriging(mf_model.MFModel):
 
         # Set up kriging model of the difference between the low and
         # high fidelity data set
-        self.kriging_diff = kriging.DiffKriging(self.x, self.y, y_lf_hat)
+        self.kriging_diff = kriging.DiffKriging(
+            self.x, self.y, y_lf_hat, nugget=self.nugget
+        )
 
         # Find a kriging model for the high fidelity data set
         # This is not completely necessary, may be removed later for efficiency
-        self.kriging_hf = kriging.Kriging(self.x, self.y)
+        self.kriging_hf = kriging.Kriging(self.x, self.y, nugget=self.nugget)
 
         # Set up the cokriging covariance matrix
         self.C, self.inv_C = self.calculate_covariance()

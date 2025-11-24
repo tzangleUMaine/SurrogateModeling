@@ -30,6 +30,7 @@ class KANModel(kan.KAN, model.Model):
         grid: list = [3],
         opt: str = "LBFGS",
         n_iter: int = 100,
+        lr: float = 1.0,
     ):
         g = grid.pop(0)
 
@@ -59,6 +60,7 @@ class KANModel(kan.KAN, model.Model):
             dataset=self.dataset,
             opt=opt,
             steps=n_iter,
+            lr=lr,
         )
         for g in grid:
             self.refine_model(g)
@@ -66,6 +68,7 @@ class KANModel(kan.KAN, model.Model):
                 dataset=self.dataset,
                 opt=opt,
                 steps=n_iter,
+                lr=lr,
             )
 
     def evaluate(self, x):
@@ -118,6 +121,7 @@ class CompositeKANModel(kan.KAN, model.Model):
         grid: int = [3],
         opt: str = "LBFGS",
         n_iter: int = 100,
+        lr: float = 1.0,
     ):
         g = grid.pop(0)
         kan.KAN.__init__(
@@ -150,7 +154,12 @@ class CompositeKANModel(kan.KAN, model.Model):
             in_features=self.input_size, out_features=self.output_size, bias=True
         ).to(DEVICE)
 
-        self.results = self.fit(dataset=self.dataset, opt=opt, steps=n_iter)
+        self.results = self.fit(
+            dataset=self.dataset,
+            opt=opt,
+            steps=n_iter,
+            lr=lr,
+        )
 
         for g in grid:
             self.refine_model(g)
@@ -158,6 +167,7 @@ class CompositeKANModel(kan.KAN, model.Model):
                 dataset=self.dataset,
                 opt=opt,
                 steps=n_iter,
+                lr=lr,
             )
 
     def forward(self, x_in, singularity_avoiding=False, y_th=1000.0, loud=False):
@@ -203,11 +213,13 @@ class MFKANModel(mf_model.MFModel):
         grid_lf: int = [3],
         opt_lf: str = "LBFGS",
         n_iter_lf: int = 100,
+        lr_lf: float = 1.0,
         spline_order_mf: int = 3,
         width_mf: list = [1, 2, 1],
         grid_mf: int = [3],
         opt_mf: str = "LBFGS",
         n_iter_mf: int = 100,
+        lr_mf: float = 1.0,
     ):
         # Init the multifidelity model data
         mf_model.MFModel.__init__(self, x_lf, y_lf, x_hf, y_hf)
@@ -223,6 +235,7 @@ class MFKANModel(mf_model.MFModel):
             grid=grid_lf,
             opt=opt_lf,
             n_iter=n_iter_lf,
+            lr=lr_lf,
         )
 
         # Evaluate the LF KAN model at the HF locations
@@ -252,6 +265,7 @@ class MFKANModel(mf_model.MFModel):
             grid=grid_mf,
             opt=opt_mf,
             n_iter=n_iter_mf,
+            lr=lr_mf,
         )
 
     def evaluate(self, x, loud=False):
