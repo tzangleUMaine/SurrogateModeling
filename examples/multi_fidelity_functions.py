@@ -25,8 +25,8 @@ class MultiFidelityTemplate:
     def plot_high_fidelity(
         self,
         name="Model",
-        color="blue",
-        label="high fidelity fxn",
+        color="dodgerblue",
+        label="HF Function",
         linestyle="solid",
         ax=None,
         n_samples=100,
@@ -44,8 +44,8 @@ class MultiFidelityTemplate:
     def plot_low_fidelity(
         self,
         name="Model",
-        color="black",
-        label="low fidelity fxn",
+        color="orange",
+        label="LF Function",
         linestyle="solid",
         ax=None,
         n_samples=100,
@@ -119,8 +119,8 @@ class MultiFidelityTemplate:
                 ax = fig.add_subplot(projection="3d")
 
             ax.set_title(name)
-            ax.set_xlabel("x_1")
-            ax.set_ylabel("x_2")
+            ax.set_xlabel("x1")
+            ax.set_ylabel("x2")
             ax.set_zlabel("f(x)")
 
             ax.plot_surface(
@@ -390,6 +390,124 @@ class PeaksShifted(MultiFidelityTemplate):
             - 1 / 3 * np.exp(-((x[:, 0] + 1) ** 2) - x[:, 1] ** 2)
         )
         return y_lf.reshape(-1, 1)
+
+
+class PeaksShifted2(MultiFidelityTemplate):
+    """Example generated from Peaks function
+    Utilizes a non-linear scaling to generate data from peaks function"""
+
+    def __init__(self):
+        self.bounds = [[-3.0, 3.0], [-3.0, 3.0]]
+        self.dimensions = 2
+        self.name = "Peaks Function Shifted"
+
+    def high_fidelity(self, x):
+        y_hf = (
+            3 * (1 - x[:, 0]) ** 2 * np.exp(-(x[:, 0] ** 2) - (x[:, 1] + 1) ** 2)
+            - 10
+            * (x[:, 0] / 5 - x[:, 0] ** 3 - x[:, 1] ** 5)
+            * np.exp(-x[:, 0] ** 2 - x[:, 1] ** 2)
+            - 1 / 3 * np.exp(-((x[:, 0] + 1) ** 2) - x[:, 1] ** 2)
+        )
+        return y_hf.reshape(-1, 1)
+
+    def low_fidelity(self, x):
+        y_lf = (
+            2.5 * (1 - x[:, 0]) ** 2 * np.exp(-(x[:, 0] ** 2) - (x[:, 1] + 1) ** 2)
+            - 6
+            * (x[:, 0] / 5 - x[:, 1] ** 3)
+            * np.exp(-0.5 * (x[:, 0] ** 2 + x[:, 1] ** 2))
+        ) - 2
+        return y_lf.reshape(-1, 1)
+
+
+class PeaksShifted3(MultiFidelityTemplate):
+    """Example generated from Peaks function
+    Utilizes a non-linear scaling to generate data from peaks function"""
+
+    def __init__(self):
+        self.bounds = [[-3.0, 3.0], [-3.0, 3.0]]
+        self.dimensions = 2
+        self.name = "Peaks Function Shifted"
+
+    def high_fidelity(self, x):
+        y_hf = (
+            3 * (1 - x[:, 0]) ** 2 * np.exp(-(x[:, 0] ** 2) - (x[:, 1] + 1) ** 2)
+            - 10
+            * (x[:, 0] / 5 - x[:, 0] ** 3 - x[:, 1] ** 5)
+            * np.exp(-x[:, 0] ** 2 - x[:, 1] ** 2)
+            - 1 / 3 * np.exp(-((x[:, 0] + 1) ** 2) - x[:, 1] ** 2)
+        )
+        return y_hf.reshape(-1, 1)
+
+    def low_fidelity(self, x):
+        y_lf = (
+            -10
+            * (x[:, 0] / 5 - x[:, 0] ** 3 - x[:, 1] ** 5)
+            * np.exp(-x[:, 0] ** 2 - x[:, 1] ** 2)
+        ) - 2
+        return y_lf.reshape(-1, 1)
+
+
+class PeaksShifted4(MultiFidelityTemplate):
+    """Example generated from Peaks function
+    Utilizes a non-linear scaling to generate data from peaks function"""
+
+    def __init__(self):
+        self.bounds = [[-3.0, 3.0], [-3.0, 3.0]]
+        self.dimensions = 2
+        self.name = "Peaks Function Shifted"
+
+    def high_fidelity(self, x):
+        y_hf = (
+            3 * (1 - x[:, 0]) ** 2 * np.exp(-(x[:, 0] ** 2) - (x[:, 1] + 1) ** 2)
+            - 10
+            * (x[:, 0] / 5 - x[:, 0] ** 3 - x[:, 1] ** 5)
+            * np.exp(-x[:, 0] ** 2 - x[:, 1] ** 2)
+            - 1 / 3 * np.exp(-((x[:, 0] + 1) ** 2) - x[:, 1] ** 2)
+        )
+        return y_hf.reshape(-1, 1)
+
+    def low_fidelity(self, x):
+        y_lf = (
+            0.9
+            * (
+                -10
+                * (x[:, 0] / 5 - x[:, 0] ** 3 - x[:, 1] ** 5)
+                * np.exp(-x[:, 0] ** 2 - x[:, 1] ** 2)
+            )
+            - 2
+        )
+        return y_lf.reshape(-1, 1)
+
+
+class Zhang22Example5(MultiFidelityTemplate):
+    """Example from the Zhang 2022 paper in the appendix"""
+
+    def __init__(self):
+        self.bounds = [[-2.0, 2.0], [-2.0, 2.0]]
+        self.dimensions = 2
+        self.name = "Zhang Example 5"
+
+    def high_fidelity(self, x):
+        return (
+            4
+            - 2.1 * x[:, 0] ** 4
+            + (1.0 / 3.0) * x[:, 0] ** 6
+            + x[:, 0] * x[:, 1]
+            - 4 * x[:, 1] ** 2
+            + 4 * x[:, 1] ** 4
+        ).reshape(-1, 1)
+
+    def low_fidelity(self, x):
+        return (
+            4
+            - 0.5 * x[:, 0] ** 4
+            + 0.04 * x[:, 0] ** 6
+            + 0.5 * x[:, 0] * x[:, 1]
+            - 1.96 * x[:, 1] ** 2
+            + 1.96 * x[:, 1] ** 4
+        ).reshape(-1, 1)
 
 
 multi_fidelity_functions = {

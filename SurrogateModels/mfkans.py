@@ -56,12 +56,19 @@ class KANModel(kan.KAN, model.Model):
 
         self.bounds = [[float(mn), float(mx)] for mn, mx in zip(mins, maxs)]
 
-        self.results = self.fit(
+        # Initialize storage for test and training monitoring
+        self.train_losses = []
+        self.test_losses = []
+
+        results = self.fit(
             dataset=self.dataset,
             opt=opt,
             steps=n_iter,
             lr=lr,
         )
+        self.train_losses += results["train_loss"]
+        self.test_losses += results["test_loss"]
+
         for g in grid:
             self.refine_model(g)
             self.results = self.fit(
@@ -70,6 +77,8 @@ class KANModel(kan.KAN, model.Model):
                 steps=n_iter,
                 lr=lr,
             )
+            self.train_losses += results["train_loss"]
+            self.test_losses += results["test_loss"]
 
     def evaluate(self, x):
         x_tensor = torch.from_numpy(x)
@@ -80,6 +89,47 @@ class KANModel(kan.KAN, model.Model):
         refined = self.refine(new_grid)
         self.__dict__.update(refined.__dict__)
         return self
+
+    def plot_fit_error(
+        self,
+        name="Model Error",
+        color_train="black",
+        color_test="blue",
+        label_train="train",
+        label_test="test",
+        ax=None,
+    ):
+        ax = self.plot_train_error(
+            name=name, color=color_train, label=label_train, ax=ax
+        )
+        ax = self.plot_test_error(name=name, color=color_test, label=label_test, ax=ax)
+        return ax
+
+    def plot_test_error(self, name="Model Error", color="black", label="test", ax=None):
+        # Plot the function
+        if ax == None:
+            fig = plt.figure(name)
+            ax = fig.add_subplot()
+        ax.set_title(name)
+        ax.set_xlabel("Epoch")
+        ax.set_ylabel("Error")
+
+        ax.plot(self.test_losses, color=color, label=label)
+        return ax
+
+    def plot_train_error(
+        self, name="Model Error", color="blue", label="train", ax=None
+    ):
+        # Plot the function
+        if ax == None:
+            fig = plt.figure(name)
+            ax = fig.add_subplot()
+        ax.set_title(name)
+        ax.set_xlabel("Epoch")
+        ax.set_ylabel("Error")
+
+        ax.plot(self.test_losses, color=color, label=label)
+        return ax
 
     @classmethod
     def create_dataset_from_test_train_data(
@@ -154,21 +204,30 @@ class CompositeKANModel(kan.KAN, model.Model):
             in_features=self.input_size, out_features=self.output_size, bias=True
         ).to(DEVICE)
 
-        self.results = self.fit(
+        # Initialize storage for test and training monitoring
+        self.train_losses = []
+        self.test_losses = []
+
+        results = self.fit(
             dataset=self.dataset,
             opt=opt,
             steps=n_iter,
             lr=lr,
         )
 
+        self.train_losses += results["train_loss"]
+        self.test_losses += results["test_loss"]
+
         for g in grid:
             self.refine_model(g)
-            self.results = self.fit(
+            results = self.fit(
                 dataset=self.dataset,
                 opt=opt,
                 steps=n_iter,
                 lr=lr,
             )
+            self.train_losses += results["train_loss"]
+            self.test_losses += results["test_loss"]
 
     def forward(self, x_in, singularity_avoiding=False, y_th=1000.0, loud=False):
         y_linear = self._linear_nn(x_in)
@@ -188,13 +247,53 @@ class CompositeKANModel(kan.KAN, model.Model):
         self._linear_nn = torch.nn.Linear(
             in_features=self.input_size, out_features=self.output_size, bias=True
         ).to(DEVICE)
-        print("Does it make it here?")
         return self
 
     def evaluate(self, x_in, loud=False):
         x_tensor = torch.from_numpy(x_in)
         with torch.no_grad():
             return self.forward(x_tensor, loud=loud)
+
+    def plot_fit_error(
+        self,
+        name="Model Error",
+        color_train="black",
+        color_test="blue",
+        label_train="train",
+        label_test="test",
+        ax=None,
+    ):
+        ax = self.plot_train_error(
+            name=name, color=color_train, label=label_train, ax=ax
+        )
+        ax = self.plot_test_error(name=name, color=color_test, label=label_test, ax=ax)
+        return ax
+
+    def plot_test_error(self, name="Model Error", color="black", label="test", ax=None):
+        # Plot the function
+        if ax == None:
+            fig = plt.figure(name)
+            ax = fig.add_subplot()
+        ax.set_title(name)
+        ax.set_xlabel("Epoch")
+        ax.set_ylabel("Error")
+
+        ax.plot(self.test_losses, color=color, label=label)
+        return ax
+
+    def plot_train_error(
+        self, name="Model Error", color="blue", label="train", ax=None
+    ):
+        # Plot the function
+        if ax == None:
+            fig = plt.figure(name)
+            ax = fig.add_subplot()
+        ax.set_title(name)
+        ax.set_xlabel("Epoch")
+        ax.set_ylabel("Error")
+
+        ax.plot(self.test_losses, color=color, label=label)
+        return ax
 
 
 class MFKANModel(mf_model.MFModel):
@@ -284,3 +383,11 @@ class MFKANModel(mf_model.MFModel):
 
         # Evaluate the MF KAN model
         return self.mf_kan_model.evaluate(x_mf, loud=loud)
+
+    def plot_lf_fit_error(self):
+        self.lf_kan_model.plot_fit_error()
+        plt.show()
+
+    def plot_mf_fit_error(self):
+        self.mf_kan_model.plot_fit_error()
+        plt.show()

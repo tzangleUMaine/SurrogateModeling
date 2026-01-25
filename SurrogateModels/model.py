@@ -96,8 +96,8 @@ class Model:
                 ax = fig.add_subplot(projection="3d")
 
             ax.set_title(name)
-            ax.set_xlabel("x_1")
-            ax.set_ylabel("x_2")
+            ax.set_xlabel("x1")
+            ax.set_ylabel("x2")
             ax.set_zlabel("f(x)")
 
             ax.plot_surface(
@@ -179,8 +179,8 @@ class Model:
                 ax = fig.add_subplot(projection="3d")
 
             ax.set_title(name)
-            ax.set_xlabel("x_1")
-            ax.set_ylabel("x_2")
+            ax.set_xlabel("x1")
+            ax.set_ylabel("x2")
             ax.set_zlabel("Error")
 
             ax.plot_surface(
@@ -190,8 +190,9 @@ class Model:
 
     def model_error(self, x_test, y_test):
         y_hat = self.evaluate(x_test)
-        error = np.sqrt((y_hat - y_test) ** 2)
-        return (error.sum(axis=0) / x_test.shape[0])[0]
+        error = (y_hat - y_test) ** 2
+        error = (error.sum(axis=0) / x_test.shape[0])[0]
+        return np.sqrt(error)
 
     def bounded_model_error(self, bounds, fxn_truth, n_samples=100):
         if self.d == 1:
@@ -216,8 +217,8 @@ class Model:
             x_sample = Model.generate_grid_array(
                 x1_min, x1_max, x2_min, x2_max, n_samples
             )
-            y_truth = fxn_truth(x_test)
-            return self.model_error(x_test, y_truth)
+            y_truth = fxn_truth(x_sample)
+            return self.model_error(x_sample, y_truth)
 
     @staticmethod
     def generate_grid(xmin=-2, xmax=2, ymin=-2, ymax=2, num=50):

@@ -34,7 +34,7 @@ class MLPNetwork(torch.nn.Module, model.Model):
         epochs: int = 500,
         learning_rate=0.001,
         weight_decay=0.001,
-        batch_size=80,
+        batch_size=120,
         weight_file="network_weights",
         load_weights=False,
         write_weights=False,
@@ -139,7 +139,7 @@ class MLPNetwork(torch.nn.Module, model.Model):
                 X = X.to(device)
                 y = y.to(device)
                 pred = self.forward(X)
-                train_error = self.loss(pred, y)
+                train_error += self.loss(pred, y)
 
         train_error /= training_size
 
@@ -155,7 +155,7 @@ class MLPNetwork(torch.nn.Module, model.Model):
             y = y.to(device)
             with torch.no_grad():
                 pred = self.forward(X)
-                train_error = self.loss(pred, y)
+                train_error += self.loss(pred, y)
 
         train_error /= training_size
 
@@ -344,7 +344,7 @@ class CompositeNN(torch.nn.Module, mf_model.MFModel):
             y = y.to(device)
             with torch.no_grad():
                 pred = self.forward(X)
-                train_error = train_error + self.loss(pred, y)
+                train_error += self.loss(pred, y)
 
         train_error /= training_size
 
@@ -360,7 +360,7 @@ class CompositeNN(torch.nn.Module, mf_model.MFModel):
             y = y.to(device)
             with torch.no_grad():
                 pred = self.forward(X)
-                test_error = test_error + self.loss(pred, y)
+                test_error += self.loss(pred, y)
 
         test_error /= training_size
 
