@@ -1,4 +1,5 @@
 import numpy as np
+from scipy.stats import qmc
 import matplotlib.pyplot as plt
 
 import model
@@ -127,6 +128,24 @@ class MultiFidelityTemplate:
                 X1, X2, y_sample, color=color, label=label, linestyle=linestyle
             )
             return ax
+
+    def sample_uniform(self, n):
+        axes = [
+            np.linspace(self.bounds[i][0], self.bounds[i][1], n)
+            for i in range(self.dimensions)
+        ]
+        # Create full tensor grid
+        grids = np.meshgrid(*axes, indexing="ij")
+
+        # Stack into (N_total, dim)
+        X = np.stack([g.ravel() for g in grids], axis=-1)
+        return X
+
+    def sample_random(self, n, seed=1234):
+        X = latin_hypercube_sampler(
+            n=n, d=self.dimensions, bounds=self.bounds, seed=seed
+        )
+        return X
 
 
 class ZhangExample1(MultiFidelityTemplate):
@@ -286,19 +305,188 @@ class ZhangExample8(MultiFidelityTemplate):
 
     def high_fidelity(self, x):
         y_hf = (
-            np.sin(5 * np.pi * x[:, 0]) ** 6
-            + 0.1 * (x[:, 1] - 0.5) ** 2
-            + 0.5 * x[:, 1]
+            0.79 * (1 + np.sin(x[:, 0]) / 10) * self.low_fidelity(x)
+            - 2 * x[:, 0]
+            + x[:, 1] ** 2
+            + x[:, 2] ** 2
+            + 0.5
         )
         return y_hf.reshape(-1, 1)
 
     def low_fidelity(self, x):
+        y_lf = (x[:, 0] / 2) * (
+            np.sqrt(1 + (x[:, 0] + x[:, 2] ** 2) * x[:, 3] / x[:, 0] ** 20) - 1
+        ) + (x[:, 0] + 3 * x[:, 3]) * np.exp(1 + np.sin(x[:, 2]))
+        return y_lf.reshape(-1, 1)
+
+
+class ZhangExample9(MultiFidelityTemplate):
+    """Example 9 from
+    "A multi-fidelity surrogate modeling approach for incorporating multiple
+    non-hierarchical low-fidelity data" (2022)   Zhang et al.
+
+    4D input to function
+    """
+
+    def __init__(self):
+        self.bounds = [
+            [-5, 10],
+            [-5, 10],
+            [-5, 10],
+            [-5, 10],
+            [-5, 10],
+            [-5, 10],
+        ]
+        self.dimensions = 6
+        self.name = "Zhang Example 9"
+
+    def high_fidelity(self, x):
+        y_hf = (
+            100 * (x[:, 1] - x[:, 0] ** 2) ** 2
+            + 4 * (x[:, 0] - 1) ** 4
+            + 100 * (x[:, 2] - x[:, 1] ** 2) ** 2
+            + 4 * (x[:, 1] - 1) ** 4
+            + 100 * (x[:, 3] - x[:, 2] ** 2) ** 2
+            + 4 * (x[:, 2] - 1) ** 4
+            + 100 * (x[:, 4] - x[:, 3] ** 2) ** 2
+            + 4 * (x[:, 3] - 1) ** 4
+            + 100 * (x[:, 5] - x[:, 4] ** 2) ** 2
+            + 4 * (x[:, 4] - 1) ** 4
+        ) / 100000
+        return y_hf.reshape(-1, 1)
+
+    def low_fidelity(self, x):
         y_lf = (
-            0.5 * np.sin(5 * np.pi * x[:, 0]) ** 6
-            + 0.05 * (x[:, 1] - 0.5) ** 2
-            + 0.25 * x[:, 1]
-            + 0.15
+            100 * (x[:, 1] - x[:, 0] ** 2) ** 2
+            + (x[:, 0] - 1) ** 2
+            + 100 * (x[:, 2] - x[:, 1] ** 2)
+            + (x[:, 1] - 1) ** 2
+            + 100 * (x[:, 3] - x[:, 2] ** 2) ** 2
+            + (x[:, 2] - 1) ** 2
+            + 100 * (x[:, 4] - x[:, 3] ** 2) ** 2
+            + (x[:, 3] - 1) ** 2
+            + 100 * (x[:, 5] - x[:, 4] ** 2) ** 2
+            + (x[:, 4] - 1) ** 2
+        ) / 100000
+        return y_lf.reshape(-1, 1)
+
+
+class Zhang22Example17(MultiFidelityTemplate):
+    """Example from Zhang 2022 paper Multi-Fidelity Surrogate Model based on feasible intervals
+
+    This is a 4D example case ove a [-1,1] interval
+    """
+
+    def __init__(self):
+        self.bounds = [
+            [-1, 1],
+            [-1, 1],
+            [-1, 1],
+            [-1, 1],
+        ]
+        self.dimensions = 4
+        self.name = "Zhang Example 17"
+
+    def low_fidelity(self, x):
+        y_lf = self.high_fidelity(x) - 1.5 * (
+            5 * x[:, 0] ** 2 + 4 * x[:, 1] ** 2 + 3 * x[:, 2] + x[:, 3] ** 2
         )
+        return y_lf.reshape(-1, 1)
+
+    def high_fidelity(self, x):
+        x1, x2, x3, x4 = x.T
+
+        y_hf = (
+            100 * (x1**2 - x2) ** 2
+            + (x1 - 1) ** 2
+            + 90 * (x3**2 - x4) ** 2
+            + 10.1 * (x2 - 1) ** 2
+            + (x4 - 1) ** 2
+            + 19.8 * (x2 - 1) * (x4 - 1)
+        )
+
+        return y_hf[:, None]
+
+
+class Zhang22Example18(MultiFidelityTemplate):
+    """Example from Zhang 2022 paper Multi-Fidelity Surrogate Model based on feasible intervals
+
+    This is a 6D example case over a [-5,10] interval
+    """
+
+    def __init__(self):
+        self.bounds = [
+            [-5, 10],
+            [-5, 10],
+            [-5, 10],
+            [-5, 10],
+            [-5, 10],
+            [-5, 10],
+        ]
+        self.dimensions = 6
+        self.name = "Zhang Example 18"
+
+    def high_fidelity(self, x):
+        y_1 = 0
+        y_2 = 0
+        for i in range(1, 6):
+            y_1 = y_1 + x[:, i - 1] ** 2
+            y_2 = y_2 + 0.5 * i * x[:, i - 1]
+
+        y_hf = y_1 + y_2**2 + y_2**4
+        return y_hf.reshape(-1, 1)
+
+    def low_fidelity(self, x):
+        y_1 = 0
+        for i in range(1, 6):
+            y_1 = y_1 + 0.5 * i * x[:, i - 1]
+
+        y_lf = 2.5 * (y_1**2 + y_1**4)
+        return y_lf.reshape(-1, 1)
+
+
+class Zhang22Example19(MultiFidelityTemplate):
+    """Example from Zhang 2022 paper Multi-Fidelity Surrogate Model based on feasible intervals
+
+    This is an 8D example case over a [0,1] interval
+    """
+
+    def __init__(self):
+        self.bounds = [
+            [0, 1],
+            [0, 1],
+            [0, 1],
+            [0, 1],
+            [0, 1],
+            [0, 1],
+            [0, 1],
+            [0, 1],
+        ]
+        self.dimensions = 8
+        self.name = "Zhang Example 19"
+
+    def high_fidelity(self, x):
+        y_hf = 0
+        for i in range(1, 2):
+            y_hf = (
+                (x[:, 4 * i - 4] + 10 * x[:, 4 * i - 3]) ** 2
+                + 5 * (x[:, 4 * i - 2] - x[:, 4 * i - 1]) ** 2
+                + (x[:, 4 * i - 3] - 2 * x[:, 4 * i - 2]) ** 4
+                + 10 * (x[:, 4 * i - 4] - x[:, 4 * i - 1]) ** 4
+            )
+
+        return y_hf.reshape(-1, 1)
+
+    def low_fidelity(self, x):
+        y_lf = 0
+        for i in range(1, 2):
+            y_lf = (
+                (x[:, 4 * i - 4] + x[:, 4 * i - 3]) ** 2
+                + 5 * (x[:, 4 * i - 2] - x[:, 4 * i - 1]) ** 2
+                + (x[:, 4 * i - 3] - 2 * x[:, 4 * i - 2]) ** 4
+                + 10 * (x[:, 4 * i - 4] - x[:, 4 * i - 1]) ** 4
+            )
+
         return y_lf.reshape(-1, 1)
 
 
@@ -510,6 +698,18 @@ class Zhang22Example5(MultiFidelityTemplate):
         ).reshape(-1, 1)
 
 
+def latin_hypercube_sampler(n: int, d: int, bounds: list, seed: int):
+    sampler = qmc.LatinHypercube(d=d, seed=seed)
+    unit_sample = sampler.random(n)
+
+    bounds = np.asarray(bounds)
+    lower = bounds[:, 0]
+    upper = bounds[:, 1]
+
+    sample = lower + unit_sample * (upper - lower)
+    return sample
+
+
 multi_fidelity_functions = {
     "Zhang Example 1": ZhangExample1,
     "Zhang Example 3": ZhangExample3,
@@ -518,4 +718,12 @@ multi_fidelity_functions = {
     "Meng Discontinuous": MengDiscontinuous,
     "Meng Non-Linear Correlation": MengNonLinearCorrelation,
     "Meng Phase Shifted Oscillations": MengPhaseShift,
+}
+
+increasing_dimensions = {
+    "1D": ForresterExample,
+    "2D": PeaksShifted2,
+    "4D": Zhang22Example17,
+    "6D": Zhang22Example18,
+    "8D": Zhang22Example19,
 }

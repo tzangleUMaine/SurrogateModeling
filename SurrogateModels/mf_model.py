@@ -23,7 +23,6 @@ class MFModel(model.Model):
         marker_lf="s",
         ax: plt.subplot = None,
     ):
-        # DRAGONS: Need to change over 1D plotting to ax methods
         if self.d == 1:
             if ax == None:
                 fig = plt.figure(name)
