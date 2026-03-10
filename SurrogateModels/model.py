@@ -188,6 +188,53 @@ class Model:
             )
             return ax
 
+    def plot_testpoint_error(
+        self,
+        X_test,
+        y_test,
+        name="Error",
+        color="black",
+        marker="o",
+        label="model",
+        ax=None,
+    ):
+        """Plots the absolute error beteween the model and a set of test points
+
+        Args:
+            bounds (_type_): bounds that the model is defined over in n-dimensions
+            fxn_truth (_type_): the ground truth function for comparison
+            name (str, optional): Graph name and title. Defaults to "Error".
+            color (str, optional): Plot color. Defaults to "black".
+            label (str, optional): Label for plotted data. Defaults to "model".
+            linestyle (str, optional): Linestyle for plot. Defaults to "solid".
+            ax (_type_, optional): Active axis for plotting multiple. Defaults to None.
+            n_samples (int, optional): number of samples in each direction. Defaults to 100.
+
+        Returns:
+            Axis: Active Axis
+        """
+
+        if self.d == 1:
+
+            # Generate the sample point locations and evaluate the model
+            y_hat = self.evaluate(X_test)
+            error = np.abs(y_hat - y_test)
+
+            # Plot the function
+            if ax == None:
+                fig = plt.figure(name)
+                ax = fig.add_subplot()
+
+            ax.set_title(name)
+            ax.set_xlabel("x")
+            ax.set_ylabel("Error")
+
+            ax.scatter(X_test, error, color=color, label=label, marker=marker)
+            return ax
+        else:
+            print("this isn't working yet for the bigger dimensions, sorry!")
+            return ax
+
     def model_error(self, x_test, y_test):
         y_hat = self.evaluate(x_test)
         error = (y_hat - y_test) ** 2

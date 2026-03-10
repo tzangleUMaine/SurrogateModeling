@@ -26,13 +26,29 @@ class Kriging(model.Model):
         self.b = self.calculate_b()
 
     def calculate_hyper_params(self):
-        fun = lambda vars: (-self.calculate_mle(vars[: self.d], vars[self.d :]))
-        x0 = np.ones(self.d * 2, dtype=float)
-        bounds = [(0, None)] * self.d + [(1, 2)] * self.d
-        result = scipy.optimize.minimize(fun, x0, method="L-BFGS-B", bounds=bounds)
-        theta_opt = result.x[: self.d]
-        p_opt = result.x[self.d :]
+        # fun = lambda vars: (-self.calculate_mle(vars[: self.d], vars[self.d :]))
+        x0 = np.zeros(self.d * 2, dtype=float)
+        bounds = [(-3, 3)] * self.d + [(1, 2)] * self.d
+        # result = scipy.optimize.minimize(fun, x0, method="L-BFGS-B", bounds=bounds)
+        # theta_opt = result.x[: self.d]
+        # p_opt = result.x[self.d :]
+        logger = MinimizeLogger(self._objective_function)
+        res, history = logger.run(
+            x0, method="L-BFGS-B", bounds=bounds, options={"gtol": 1e-12}
+        )
+        theta_opt = 10 ** res.x[: self.d]
+        p_opt = res.x[self.d :]
+        for step in history:
+            print(step)
         return theta_opt, p_opt
+
+    def _objective_function(self, vars):
+        beta = vars[: self.d]
+        p = vars[self.d :]
+
+        # optimize theta as log10(theta)
+        theta = 10**beta
+        return -self.calculate_mle(theta, p)
 
     def calculate_pre_psi_matrix(self):
         pre_psi_ij = np.zeros((self.n, self.n), dtype=float)
@@ -88,7 +104,8 @@ class Kriging(model.Model):
         psi, inv_psi = self.calculate_psi_matrix(theta, p)
         mu_hat = self.calculate_kriging_mean(inv_psi)
         sigma = self.calculate_sigma(inv_psi, mu_hat)
-        mle = -0.5 * (self.n * np.log(sigma) + np.log(np.linalg.det(psi)))
+        sign, logdet = np.linalg.slogdet(psi)
+        mle = -0.5 * (self.n * np.log(sigma) + logdet)
         return mle
 
     def calculate_mle2(self, theta):
@@ -198,3 +215,40 @@ class DiffKriging(Kriging):
         sigma = self.calculate_sigma(inv_psi, mu_hat)
         mle = -0.5 * (self.n * np.log(sigma) + np.log(np.linalg.det(psi)))
         return mle
+
+
+class MinimizeLogger:
+    def __init__(self, func, grad=None):
+        self.func = func
+        self.grad = grad
+        self.history = []
+        self.iter = 0
+
+    def wrapped_func(self, x):
+        f = self.func(x)
+        return f
+
+    def wrapped_grad(self, x):
+        if self.grad is None:
+            return None
+        return self.grad(x)
+
+    def callback(self, xk):
+        record = {"iter": self.iter, "x": xk.copy(), "f": self.func(xk)}
+
+        if self.grad is not None:
+            record["grad"] = self.grad(xk)
+
+        self.history.append(record)
+        self.iter += 1
+
+    def run(self, x0, **minimize_kwargs):
+        result = scipy.optimize.minimize(
+            self.wrapped_func,
+            x0,
+            jac=self.wrapped_grad if self.grad else None,
+            callback=self.callback,
+            **minimize_kwargs
+        )
+
+        return result, self.history
