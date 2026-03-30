@@ -33,13 +33,11 @@ class Kriging(model.Model):
         # theta_opt = result.x[: self.d]
         # p_opt = result.x[self.d :]
         logger = MinimizeLogger(self._objective_function)
-        res, history = logger.run(
+        res, _ = logger.run(
             x0, method="L-BFGS-B", bounds=bounds, options={"gtol": 1e-12}
         )
         theta_opt = 10 ** res.x[: self.d]
         p_opt = res.x[self.d :]
-        for step in history:
-            print(step)
         return theta_opt, p_opt
 
     def _objective_function(self, vars):
@@ -82,7 +80,8 @@ class Kriging(model.Model):
         # Add a constant term to the matrix diagonal to increase stability
         # nugget defaults to a near zero number
         psi += np.eye(self.n) * self.nugget
-        inv_psi = np.linalg.inv(psi)
+        L = np.linalg.cholesky(psi)
+        inv_psi = np.linalg.solve(L.T, np.linalg.solve(L, np.eye(self.n)))
         return psi, inv_psi
 
     def _calculate_correlation(self, theta, p, X_1, X_2):
@@ -208,12 +207,22 @@ class DiffKriging(Kriging):
         scale_factor_opt = result.x[-1]
         return theta_opt, p_opt, scale_factor_opt
 
+    def _objective_function(self, vars):
+        beta = vars[: self.d]
+        p = vars[self.d : -1]
+        scale_factor = vars[-1]
+
+        # optimize theta as log10(theta)
+        theta = 10**beta
+        return -self.calculate_mle(theta, p, scale_factor)
+
     def calculate_mle(self, theta, p, scale_factor):
         psi, inv_psi = self.calculate_psi_matrix(theta, p)
         self.y = self.yh - scale_factor * self.yl
         mu_hat = self.calculate_kriging_mean(inv_psi)
         sigma = self.calculate_sigma(inv_psi, mu_hat)
-        mle = -0.5 * (self.n * np.log(sigma) + np.log(np.linalg.det(psi)))
+        sign, logdet_psi = np.linalg.slogdet(psi)
+        mle = -0.5 * (self.n * np.log(sigma) + logdet_psi)
         return mle
 
 
