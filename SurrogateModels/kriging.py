@@ -17,13 +17,6 @@ class Kriging(model.Model):
 
         self.theta, self.p = self.calculate_hyper_params()
 
-        # self.psi, self.inv_psi = self.calculate_psi_matrix(self.theta, self.p)
-
-        # self.mu = self.calculate_kriging_mean(self.inv_psi)
-
-        # self.sigma = self.calculate_sigma(self.inv_psi, self.mu)
-
-        # self.b = self.calculate_b()
         self.mu, self.sigma, self.b, self.psi = self._calculate_kriging_constants(
             self.theta, self.p
         )
@@ -33,9 +26,6 @@ class Kriging(model.Model):
         x0 = np.zeros(self.d * 2, dtype=float)
         x0[self.d :] = 2
         bounds = [(-3, 3)] * self.d + [(1, 2)] * self.d
-        # result = scipy.optimize.minimize(fun, x0, method="L-BFGS-B", bounds=bounds)
-        # theta_opt = result.x[: self.d]
-        # p_opt = result.x[self.d :]
         logger = MinimizeLogger(self._objective_function)
         res, _ = logger.run(x0, method="L-BFGS-B", bounds=bounds)
         theta_opt = 10 ** res.x[: self.d]
@@ -50,46 +40,9 @@ class Kriging(model.Model):
         theta = 10**beta
         return -self.calculate_mle(theta, p)
 
-    def calculate_pre_psi_matrix(self):
-        pre_psi_ij = np.zeros((self.n, self.n), dtype=float)
-        for i in range(0, self.n):
-            for j in range(0, self.n):
-                diffX = self.x[i, :] - self.x[j, :]
-                pre_psi_ij[i, j] = np.dot(diffX, diffX)
-        return pre_psi_ij
-
-    def calculate_diffs(self):
-        return np.abs(self.x[:, None, :] - self.x[None, :, :])
-
-    def calculate_kriging_mean(self, inv_psi):
-        F = np.ones((self.n, 1))
-        mu = np.transpose(F) @ inv_psi @ self.y / (np.transpose(F) @ inv_psi @ F)
-        return mu
-
-    def calculate_sigma(self, inv_psi, mu):
-        F = np.ones((self.n, 1))
-        sigma = (
-            (1.0 / self.n) * np.transpose(self.y - F * mu) @ inv_psi @ (self.y - F * mu)
-        )
-        return sigma
-
-    def calculate_b(self):
-        b = self.inv_psi @ (self.y - np.ones((self.n, 1)) * self.mu)
-        return b
-
-    def calculate_psi_matrix(self, theta, p):
-        psi = self._calculate_correlation(theta, p, self.x, self.x)
-        # Add a constant term to the matrix diagonal to increase stability
-        # nugget defaults to a near zero number
-        psi += np.eye(self.n) * self.nugget
-        L = np.linalg.cholesky(psi)
-        inv_psi = np.linalg.solve(L.T, np.linalg.solve(L, np.eye(self.n)))
-        return psi, inv_psi
-
     def calculate_mle(self, theta, p):
 
         psi = self._calculate_correlation(theta, p, self.x, self.x)
-
         psi += np.eye(self.n) * self.nugget
 
         try:
@@ -106,23 +59,17 @@ class Kriging(model.Model):
         beta = np.linalg.solve(L.T, np.linalg.solve(L, ones))
 
         mu = (ones.T @ alpha) / (ones.T @ beta)
-
         r = self.y - ones * mu
-
         gamma = np.linalg.solve(L.T, np.linalg.solve(L, r))
-
         sigma2 = (r.T @ gamma) / self.n
-
         logdet = 2 * np.sum(np.log(np.diag(L)))
 
         mle = -0.5 * (self.n * np.log(sigma2) + logdet)
-
         return mle.item()
 
     def _calculate_kriging_constants(self, theta, p):
 
         psi = self._calculate_correlation(theta, p, self.x, self.x)
-
         psi += np.eye(self.n) * self.nugget
 
         try:
@@ -139,13 +86,9 @@ class Kriging(model.Model):
         beta = np.linalg.solve(L.T, np.linalg.solve(L, ones))
 
         mu = (ones.T @ alpha) / (ones.T @ beta)
-
         r = self.y - ones * mu
-
         gamma = np.linalg.solve(L.T, np.linalg.solve(L, r))
-
         sigma2 = (r.T @ gamma) / self.n
-
         b = np.linalg.solve(L.T, np.linalg.solve(L, self.y - ones * mu))
 
         return (mu, sigma2, b, psi)
@@ -165,56 +108,10 @@ class Kriging(model.Model):
 
         return psi
 
-    # def calculate_mle(self, theta, p):
-    #     psi, inv_psi = self.calculate_psi_matrix(theta, p)
-    #     mu_hat = self.calculate_kriging_mean(inv_psi)
-    #     sigma = self.calculate_sigma(inv_psi, mu_hat)
-    #     sign, logdet = np.linalg.slogdet(psi)
-    #     mle = -0.5 * (self.n * np.log(sigma) + logdet)
-    #     return mle
-
-    def calculate_mle2(self, theta):
-        psi, inv_psi = self.calculate_psi_matrix(theta)
-        mu_hat = self.calculate_kriging_mean(inv_psi)
-        sigma = self.calculate_sigma(inv_psi, mu_hat)
-        mle = -0.5 * (self.n * np.log(sigma) + np.log(np.linalg.det(psi)))
-        return mle, sigma, np.linalg.det(psi)
-
     def evaluate(self, x_new):
         psi_new = self._calculate_correlation(self.theta, self.p, x_new, self.x)
         y_hat = psi_new @ self.b + self.mu
         return y_hat
-
-    def plot_MLE(self):
-        theta = np.linspace(1.0, 20.0, 1000)
-        mle = np.linspace(1.0, 20.0, 1000)
-        sigma = np.linspace(1.0, 20.0, 1000)
-        det = np.linspace(1.0, 20.0, 1000)
-        for i, val in enumerate(theta):
-            mle[i], sigma[i], det[i] = self.calculate_mle2(val)
-        plt.figure("sigma")
-        plt.title("sigma")
-        plt.plot(theta, sigma)
-        plt.xlabel("theta")
-        plt.ylabel("sigma")
-
-        plt.figure("det")
-        plt.title("det")
-        plt.plot(theta, det)
-        plt.xlabel("det")
-        plt.ylabel("mle")
-
-        plt.figure("mle graph")
-        plt.title("mle graph")
-        plt.plot(theta, mle)
-        plt.xlabel("theta")
-        plt.ylabel("mle")
-
-    def print_model_params(self, filename: str):
-
-        np.savetxt(filename + "prepsi", self.pre_psi, delimiter=",")
-        np.savetxt(filename + "psi", self.psi, delimiter=",")
-        np.savetxt(filename + "inv_psi", self.inv_psi, delimiter=",")
 
 
 class DiffKriging(Kriging):
@@ -270,51 +167,11 @@ class DiffKriging(Kriging):
         theta = 10**beta
         return -self.calculate_mle(theta, p, scale_factor)
 
-    def calculate_mle2(self, theta, p, scale_factor):
-        psi, inv_psi = self.calculate_psi_matrix(theta, p)
-        self.y = self.yh - scale_factor * self.yl
-        mu_hat = self.calculate_kriging_mean(inv_psi)
-        sigma = self.calculate_sigma(inv_psi, mu_hat)
-        sign, logdet_psi = np.linalg.slogdet(psi)
-        mle = -0.5 * (self.n * np.log(sigma) + logdet_psi)
-        return mle
-
     def calculate_mle(self, theta, p, scale_factor):
 
         self.y = self.yh - scale_factor * self.yl
 
         return Kriging.calculate_mle(self, theta, p)
-
-        # psi = self._calculate_correlation(theta, p, self.x, self.x)
-
-        # psi += np.eye(self.n) * self.nugget
-
-        # try:
-        #     L = np.linalg.cholesky(psi)
-        # except np.linalg.LinAlgError:
-        #     return -1e20  # invalid region for optimizer
-
-        # ones = np.ones((self.n, 1))
-
-        # # solve Ψ⁻¹y
-        # alpha = np.linalg.solve(L.T, np.linalg.solve(L, self.y))
-
-        # # solve Ψ⁻¹1
-        # beta = np.linalg.solve(L.T, np.linalg.solve(L, ones))
-
-        # mu = (ones.T @ alpha) / (ones.T @ beta)
-
-        # r = self.y - ones * mu
-
-        # gamma = np.linalg.solve(L.T, np.linalg.solve(L, r))
-
-        # sigma2 = (r.T @ gamma) / self.n
-
-        # logdet = 2 * np.sum(np.log(np.diag(L)))
-
-        # mle = -0.5 * (self.n * np.log(sigma2) + logdet)
-
-        # return mle.item()
 
 
 class MinimizeLogger:
