@@ -17,25 +17,27 @@ class Kriging(model.Model):
 
         self.theta, self.p = self.calculate_hyper_params()
 
-        self.psi, self.inv_psi = self.calculate_psi_matrix(self.theta, self.p)
+        # self.psi, self.inv_psi = self.calculate_psi_matrix(self.theta, self.p)
 
-        self.mu = self.calculate_kriging_mean(self.inv_psi)
+        # self.mu = self.calculate_kriging_mean(self.inv_psi)
 
-        self.sigma = self.calculate_sigma(self.inv_psi, self.mu)
+        # self.sigma = self.calculate_sigma(self.inv_psi, self.mu)
 
-        self.b = self.calculate_b()
+        # self.b = self.calculate_b()
+        self.mu, self.sigma, self.b, self.psi = self._calculate_kriging_constants(
+            self.theta, self.p
+        )
 
     def calculate_hyper_params(self):
         # fun = lambda vars: (-self.calculate_mle(vars[: self.d], vars[self.d :]))
         x0 = np.zeros(self.d * 2, dtype=float)
+        x0[self.d :] = 2
         bounds = [(-3, 3)] * self.d + [(1, 2)] * self.d
         # result = scipy.optimize.minimize(fun, x0, method="L-BFGS-B", bounds=bounds)
         # theta_opt = result.x[: self.d]
         # p_opt = result.x[self.d :]
         logger = MinimizeLogger(self._objective_function)
-        res, _ = logger.run(
-            x0, method="L-BFGS-B", bounds=bounds, options={"gtol": 1e-12}
-        )
+        res, _ = logger.run(x0, method="L-BFGS-B", bounds=bounds)
         theta_opt = 10 ** res.x[: self.d]
         p_opt = res.x[self.d :]
         return theta_opt, p_opt
@@ -84,6 +86,70 @@ class Kriging(model.Model):
         inv_psi = np.linalg.solve(L.T, np.linalg.solve(L, np.eye(self.n)))
         return psi, inv_psi
 
+    def calculate_mle(self, theta, p):
+
+        psi = self._calculate_correlation(theta, p, self.x, self.x)
+
+        psi += np.eye(self.n) * self.nugget
+
+        try:
+            L = np.linalg.cholesky(psi)
+        except np.linalg.LinAlgError:
+            return -1e20  # invalid region for optimizer
+
+        ones = np.ones((self.n, 1))
+
+        # solve Ψ⁻¹y
+        alpha = np.linalg.solve(L.T, np.linalg.solve(L, self.y))
+
+        # solve Ψ⁻¹1
+        beta = np.linalg.solve(L.T, np.linalg.solve(L, ones))
+
+        mu = (ones.T @ alpha) / (ones.T @ beta)
+
+        r = self.y - ones * mu
+
+        gamma = np.linalg.solve(L.T, np.linalg.solve(L, r))
+
+        sigma2 = (r.T @ gamma) / self.n
+
+        logdet = 2 * np.sum(np.log(np.diag(L)))
+
+        mle = -0.5 * (self.n * np.log(sigma2) + logdet)
+
+        return mle.item()
+
+    def _calculate_kriging_constants(self, theta, p):
+
+        psi = self._calculate_correlation(theta, p, self.x, self.x)
+
+        psi += np.eye(self.n) * self.nugget
+
+        try:
+            L = np.linalg.cholesky(psi)
+        except np.linalg.LinAlgError:
+            return -1e20  # invalid region for optimizer
+
+        ones = np.ones((self.n, 1))
+
+        # solve Ψ⁻¹y
+        alpha = np.linalg.solve(L.T, np.linalg.solve(L, self.y))
+
+        # solve Ψ⁻¹1
+        beta = np.linalg.solve(L.T, np.linalg.solve(L, ones))
+
+        mu = (ones.T @ alpha) / (ones.T @ beta)
+
+        r = self.y - ones * mu
+
+        gamma = np.linalg.solve(L.T, np.linalg.solve(L, r))
+
+        sigma2 = (r.T @ gamma) / self.n
+
+        b = np.linalg.solve(L.T, np.linalg.solve(L, self.y - ones * mu))
+
+        return (mu, sigma2, b, psi)
+
     def _calculate_correlation(self, theta, p, X_1, X_2):
         # Generate a matrix of theta elements of the same size as the dimensions
         diffs = np.abs(X_1[:, None, :] - X_2[None, :, :])
@@ -99,13 +165,13 @@ class Kriging(model.Model):
 
         return psi
 
-    def calculate_mle(self, theta, p):
-        psi, inv_psi = self.calculate_psi_matrix(theta, p)
-        mu_hat = self.calculate_kriging_mean(inv_psi)
-        sigma = self.calculate_sigma(inv_psi, mu_hat)
-        sign, logdet = np.linalg.slogdet(psi)
-        mle = -0.5 * (self.n * np.log(sigma) + logdet)
-        return mle
+    # def calculate_mle(self, theta, p):
+    #     psi, inv_psi = self.calculate_psi_matrix(theta, p)
+    #     mu_hat = self.calculate_kriging_mean(inv_psi)
+    #     sigma = self.calculate_sigma(inv_psi, mu_hat)
+    #     sign, logdet = np.linalg.slogdet(psi)
+    #     mle = -0.5 * (self.n * np.log(sigma) + logdet)
+    #     return mle
 
     def calculate_mle2(self, theta):
         psi, inv_psi = self.calculate_psi_matrix(theta)
@@ -152,7 +218,7 @@ class Kriging(model.Model):
 
 
 class DiffKriging(Kriging):
-    def __init__(self, x_mat, yh, yl, nugget=1e-3):
+    def __init__(self, x_mat, yh, yl, nugget=1e-7):
 
         self.x = x_mat
 
@@ -161,28 +227,15 @@ class DiffKriging(Kriging):
 
         self.nugget = nugget
 
-        # Initialize hyperparameters
-        self.scale_factor = 1.0
-        self.theta = np.ones((self.d, 1), dtype=float)
-
         # Set the high fidelity and low fidelity data
         self.yh = yh
         self.yl = yl
 
-        # Set y vector to be difference of two data streams
-        self.y = self.yh - self.scale_factor * self.yl
-
-        self.pre_psi = self.calculate_pre_psi_matrix()
-
         self.theta, self.p, self.scale_factor = self.calculate_hyper_params()
 
-        self.psi, self.inv_psi = self.calculate_psi_matrix(self.theta, self.p)
-
-        self.mu = self.calculate_kriging_mean(self.inv_psi)
-
-        self.sigma = self.calculate_sigma(self.inv_psi, self.mu)
-
-        self.b = self.calculate_b()
+        self.mu, self.sigma, self.b, self.psi = self._calculate_kriging_constants(
+            self.theta, self.p
+        )
 
     def calculate_hyper_params(self):
 
@@ -193,9 +246,10 @@ class DiffKriging(Kriging):
 
         # Set initial guess to 1 for all variables
         x0 = np.ones(self.d * 2 + 1, dtype=float)
+        x0[self.d : -1] = 2
 
         # Set Bounds
-        bounds = [(0, None)] * self.d  # Bounds for theta values
+        bounds = [(-3, 3)] * self.d  # Bounds for theta values
         bounds = bounds + [(1, 2)] * self.d  # Bounds for p values
         bounds = bounds + [(1e-3, None)]  # Bounds for scale factor
 
@@ -216,7 +270,7 @@ class DiffKriging(Kriging):
         theta = 10**beta
         return -self.calculate_mle(theta, p, scale_factor)
 
-    def calculate_mle(self, theta, p, scale_factor):
+    def calculate_mle2(self, theta, p, scale_factor):
         psi, inv_psi = self.calculate_psi_matrix(theta, p)
         self.y = self.yh - scale_factor * self.yl
         mu_hat = self.calculate_kriging_mean(inv_psi)
@@ -224,6 +278,43 @@ class DiffKriging(Kriging):
         sign, logdet_psi = np.linalg.slogdet(psi)
         mle = -0.5 * (self.n * np.log(sigma) + logdet_psi)
         return mle
+
+    def calculate_mle(self, theta, p, scale_factor):
+
+        self.y = self.yh - scale_factor * self.yl
+
+        return Kriging.calculate_mle(self, theta, p)
+
+        # psi = self._calculate_correlation(theta, p, self.x, self.x)
+
+        # psi += np.eye(self.n) * self.nugget
+
+        # try:
+        #     L = np.linalg.cholesky(psi)
+        # except np.linalg.LinAlgError:
+        #     return -1e20  # invalid region for optimizer
+
+        # ones = np.ones((self.n, 1))
+
+        # # solve Ψ⁻¹y
+        # alpha = np.linalg.solve(L.T, np.linalg.solve(L, self.y))
+
+        # # solve Ψ⁻¹1
+        # beta = np.linalg.solve(L.T, np.linalg.solve(L, ones))
+
+        # mu = (ones.T @ alpha) / (ones.T @ beta)
+
+        # r = self.y - ones * mu
+
+        # gamma = np.linalg.solve(L.T, np.linalg.solve(L, r))
+
+        # sigma2 = (r.T @ gamma) / self.n
+
+        # logdet = 2 * np.sum(np.log(np.diag(L)))
+
+        # mle = -0.5 * (self.n * np.log(sigma2) + logdet)
+
+        # return mle.item()
 
 
 class MinimizeLogger:
