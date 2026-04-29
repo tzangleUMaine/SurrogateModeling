@@ -8,10 +8,22 @@ import typing
 
 class Kriging(model.Model):
     def __init__(
-        self, x_mat: np.ndarray[float], y_vec: np.ndarray[float], nugget: float = 1e-3
+        self,
+        x_mat: np.ndarray[float],
+        y_vec: np.ndarray[float],
+        nugget: float = 1e-3,
+        x_transform=False,
+        y_transform=False,
+        bounds=None,
     ):
+        super().__init__(x_mat, y_vec, bounds)
+        self.x_transform = x_transform
+        self.y_transform = y_transform
+        if x_transform:
+            self.x = self.x_scale.transform(self.x)
 
-        super().__init__(x_mat, y_vec)
+        if y_transform:
+            self.y = self.y_scale.transform(self.y)
 
         self.nugget = nugget
 
@@ -91,7 +103,7 @@ class Kriging(model.Model):
         sigma2 = (r.T @ gamma) / self.n
         b = np.linalg.solve(L.T, np.linalg.solve(L, self.y - ones * mu))
 
-        return (mu, sigma2, b, psi)
+        return mu, sigma2, b, psi
 
     def _calculate_correlation(self, theta, p, X_1, X_2):
         # Generate a matrix of theta elements of the same size as the dimensions
@@ -108,9 +120,13 @@ class Kriging(model.Model):
 
         return psi
 
-    def evaluate(self, x_new):
+    def evaluate(self, x_new, scale=True):
+        if self.x_transform:
+            x_new = self.x_scale.transform(x_new)
         psi_new = self._calculate_correlation(self.theta, self.p, x_new, self.x)
         y_hat = psi_new @ self.b + self.mu
+        if self.y_transform and scale:
+            y_hat = self.y_scale.inverse(y_hat)
         return y_hat
 
 
@@ -136,11 +152,6 @@ class DiffKriging(Kriging):
 
     def calculate_hyper_params(self):
 
-        # Generate version of MLE compatible with scipy optimizers
-        fun = lambda vars: (
-            -self.calculate_mle(vars[: self.d], vars[self.d : -1], vars[-1])
-        )
-
         # Set initial guess to 1 for all variables
         x0 = np.ones(self.d * 2 + 1, dtype=float)
         x0[self.d : -1] = 2
@@ -151,9 +162,10 @@ class DiffKriging(Kriging):
         bounds = bounds + [(1e-3, None)]  # Bounds for scale factor
 
         # Run the optimizer for the lbfgs
-        result = scipy.optimize.minimize(fun, x0, method="L-BFGS-B", bounds=bounds)
+        logger = MinimizeLogger(self._objective_function)
+        result, _ = logger.run(x0, method="L-BFGS-B", bounds=bounds)
 
-        theta_opt = result.x[: self.d]
+        theta_opt = 10 ** result.x[: self.d]
         p_opt = result.x[self.d : -1]
         scale_factor_opt = result.x[-1]
         return theta_opt, p_opt, scale_factor_opt

@@ -3,13 +3,15 @@ import matplotlib.pyplot as plt
 
 
 class Model:
-    def __init__(self, x_mat, y_vec):
+    def __init__(self, x_mat, y_vec, bounds=None):
         # Expects input values of:
         # x_mat: matrix of explanatory variables
         # y_vec: vector of response variables
         self.x = x_mat
         self.y = y_vec
         self.n, self.d = np.shape(self.x)
+        self.x_scale = DataTransform(self.x, bounds)
+        self.y_scale = DataTransform(self.y)
 
     def evaluate(self, x_in):
         raise NotImplementedError()
@@ -281,3 +283,22 @@ class Model:
         X, Y = np.meshgrid(x, y)
         grid = np.column_stack([X.ravel(), Y.ravel()])
         return grid
+
+
+# Simple class to deal with function scaling
+# Probably will need a rewrite but forces users to use a specified data transform type
+class DataTransform:
+    def __init__(self, x=None, bounds=None):
+        if bounds == None:
+            self.bounds = np.vstack(np.min(x, axis=0), np.max(x, axis=0))
+        else:
+            self.bounds = np.array(bounds, dtype=float)
+        self.transform = self.bounded_transform
+        self.inverse = self.bounded_inverse
+
+    # For transforms with known bounds
+    def bounded_transform(self, x):
+        return (x - self.bounds[:, 0]) / (self.bounds[:, 1] - self.bounds[:, 0])
+
+    def bounded_inverse(x_inv, bounds):
+        return (bounds[:, 1] - bounds[:, 0]) * x_inv + bounds[:, 0]
