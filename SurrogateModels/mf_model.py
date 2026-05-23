@@ -4,11 +4,11 @@ import model
 
 
 class MFModel(model.Model):
-    def __init__(self, x_lf, y_lf, x_hf, y_hf):
+    def __init__(self, x_lf, y_lf, x_hf, y_hf, bounds):
         # Expects input values of:
         # x_mat: matrix of explanatory variables
         # y_vec: vector of response variables
-        super().__init__(x_hf, y_hf)
+        super().__init__(x_hf, y_hf, bounds)
         self.x_lf = x_lf
         self.y_lf = y_lf
 

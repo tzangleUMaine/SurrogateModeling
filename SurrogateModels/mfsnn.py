@@ -24,8 +24,8 @@ class MLPNetwork(torch.nn.Module, model.Model):
 
     def __init__(
         self,
-        X: torch.Tensor,
-        y: torch.Tensor,
+        X,
+        y,
         X_test: torch.Tensor = torch.Tensor(),
         y_test: torch.Tensor = torch.Tensor(),
         hidden_layer_size: list[int] = [10, 8],
@@ -43,11 +43,10 @@ class MLPNetwork(torch.nn.Module, model.Model):
         torch.nn.Module.__init__(self)
         model.Model.__init__(self, X, y)
 
-        # Convert numpy arrays into tensors
-        X_tensor = torch.from_numpy(X)
-        y_tensor = torch.from_numpy(y)
-        X_test_tensor = torch.from_numpy(X_test)
-        y_test_tensor = torch.from_numpy(y_test)
+        X_tensor = torch.as_tensor(X, dtype=torch.float32)
+        y_tensor = torch.as_tensor(y, dtype=torch.float32)
+        X_test_tensor = torch.as_tensor(X_test, dtype=torch.float32)
+        y_test_tensor = torch.as_tensor(y_test, dtype=torch.float32)
 
         # Hyper parameters
         self.epochs = epochs
@@ -62,22 +61,24 @@ class MLPNetwork(torch.nn.Module, model.Model):
         self.batch_size = batch_size
 
         # Normalize the y data
-        self.datahandler = data_handler.DataHandler(y)
+        self.datahandler = data_handler.DataHandler(y_tensor)
         # y = self.datahandler.scale(y)
 
         # Store the model data
         self.training_dataloader = DataLoader(
-            list(zip(X, y)), shuffle=True, batch_size=self.batch_size
+            list(zip(X_tensor, y_tensor)), shuffle=True, batch_size=self.batch_size
         )
 
         # Store the test data
         self.test_dataloader = DataLoader(
-            list(zip(X_test, y_test)), shuffle=False, batch_size=self.batch_size
+            list(zip(X_test_tensor, y_test_tensor)),
+            shuffle=False,
+            batch_size=self.batch_size,
         )
 
         # Generate the neural network
-        _, input_size = X.shape
-        _, output_size = y.shape
+        _, input_size = X_tensor.shape
+        _, output_size = y_tensor.shape
 
         # Setup network shape
         nn_layers = []
@@ -124,7 +125,7 @@ class MLPNetwork(torch.nn.Module, model.Model):
 
     # Evaluate function defines method for use in generic model class
     def evaluate(self, x_in):
-        x_tensor = torch.from_numpy(x_in)
+        x_tensor = torch.as_tensor(x_in, dtype=torch.float32)
         with torch.no_grad():
             return self.forward(x_tensor)
 
@@ -242,10 +243,10 @@ class CompositeNN(torch.nn.Module, mf_model.MFModel):
         model.Model.__init__(self, X, y)
 
         # Convert numpy arrays into tensors
-        X_tensor = torch.from_numpy(X)
-        y_tensor = torch.from_numpy(y)
-        X_test_tensor = torch.from_numpy(X_test)
-        y_test_tensor = torch.from_numpy(y_test)
+        X_tensor = torch.as_tensor(X, dtype=torch.float32)
+        y_tensor = torch.as_tensor(y, dtype=torch.float32)
+        X_test_tensor = torch.as_tensor(X_test, dtype=torch.float32)
+        y_test_tensor = torch.as_tensor(y_test, dtype=torch.float32)
 
         # Hyper parameters
         self.epochs = epochs

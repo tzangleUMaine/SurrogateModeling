@@ -11,7 +11,6 @@ class Model:
         self.y = y_vec
         self.n, self.d = np.shape(self.x)
         self.x_scale = DataTransform(self.x, bounds)
-        self.y_scale = DataTransform(self.y)
 
     def evaluate(self, x_in):
         raise NotImplementedError()
@@ -290,7 +289,9 @@ class Model:
 class DataTransform:
     def __init__(self, x=None, bounds=None):
         if bounds == None:
-            self.bounds = np.vstack(np.min(x, axis=0), np.max(x, axis=0))
+            self.bounds = np.vstack((np.min(x, axis=0), np.max(x, axis=0)))
+            if x.shape[1] == 1:
+                self.bounds = self.bounds.T
         else:
             self.bounds = np.array(bounds, dtype=float)
         self.transform = self.bounded_transform
@@ -300,5 +301,5 @@ class DataTransform:
     def bounded_transform(self, x):
         return (x - self.bounds[:, 0]) / (self.bounds[:, 1] - self.bounds[:, 0])
 
-    def bounded_inverse(x_inv, bounds):
-        return (bounds[:, 1] - bounds[:, 0]) * x_inv + bounds[:, 0]
+    def bounded_inverse(self, x_inv):
+        return (self.bounds[:, 1] - self.bounds[:, 0]) * x_inv + self.bounds[:, 0]

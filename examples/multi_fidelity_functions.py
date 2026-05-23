@@ -388,10 +388,12 @@ class Zhang22Example17(MultiFidelityTemplate):
         self.name = "Zhang Example 17"
 
     def low_fidelity(self, x):
-        y_lf = self.high_fidelity(x) - 1.5 * (
-            5 * x[:, 0] ** 2 + 4 * x[:, 1] ** 2 + 3 * x[:, 2] + x[:, 3] ** 2
-        )
-        return y_lf.reshape(-1, 1)
+        x1, x2, x3, x4 = x.T
+        y_lf = -1.5 * (5 * x1**2 + 4 * x2**2 + 3 * x3 + x4**2)
+        y_lf = y_lf[:, None]
+        y_lf = self.high_fidelity(x) + y_lf
+
+        return y_lf
 
     def high_fidelity(self, x):
         x1, x2, x3, x4 = x.T
@@ -433,16 +435,16 @@ class Zhang22Example18(MultiFidelityTemplate):
             y_1 = y_1 + x[:, i - 1] ** 2
             y_2 = y_2 + 0.5 * i * x[:, i - 1]
 
-        y_hf = y_1 + y_2**2 + y_2**4
-        return y_hf.reshape(-1, 1)
+        y_hf = np.log(y_1 + y_2**2 + y_2**4)
+        return y_hf[:, None]
 
     def low_fidelity(self, x):
         y_1 = 0
         for i in range(1, 6):
             y_1 = y_1 + 0.5 * i * x[:, i - 1]
 
-        y_lf = 2.5 * (y_1**2 + y_1**4)
-        return y_lf.reshape(-1, 1)
+        y_lf = np.log(2.5 * (y_1**2 + y_1**4))
+        return y_lf[:, None]
 
 
 class Zhang22Example19(MultiFidelityTemplate):

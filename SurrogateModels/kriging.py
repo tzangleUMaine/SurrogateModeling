@@ -11,19 +11,14 @@ class Kriging(model.Model):
         self,
         x_mat: np.ndarray[float],
         y_vec: np.ndarray[float],
-        nugget: float = 1e-3,
-        x_transform=False,
-        y_transform=False,
+        nugget: float = 1e-7,
+        scale_input=False,
         bounds=None,
     ):
         super().__init__(x_mat, y_vec, bounds)
-        self.x_transform = x_transform
-        self.y_transform = y_transform
-        if x_transform:
+        self.scale_input = scale_input
+        if scale_input:
             self.x = self.x_scale.transform(self.x)
-
-        if y_transform:
-            self.y = self.y_scale.transform(self.y)
 
         self.nugget = nugget
 
@@ -99,9 +94,8 @@ class Kriging(model.Model):
 
         mu = (ones.T @ alpha) / (ones.T @ beta)
         r = self.y - ones * mu
-        gamma = np.linalg.solve(L.T, np.linalg.solve(L, r))
-        sigma2 = (r.T @ gamma) / self.n
-        b = np.linalg.solve(L.T, np.linalg.solve(L, self.y - ones * mu))
+        b = np.linalg.solve(L.T, np.linalg.solve(L, r))
+        sigma2 = (r.T @ b) / self.n
 
         return mu, sigma2, b, psi
 
@@ -120,13 +114,14 @@ class Kriging(model.Model):
 
         return psi
 
-    def evaluate(self, x_new, scale=True):
-        if self.x_transform:
+    def evaluate(self, x_new, scale=False):
+        # Scale x input if necessary
+        if self.scale_input:
             x_new = self.x_scale.transform(x_new)
+
         psi_new = self._calculate_correlation(self.theta, self.p, x_new, self.x)
         y_hat = psi_new @ self.b + self.mu
-        if self.y_transform and scale:
-            y_hat = self.y_scale.inverse(y_hat)
+
         return y_hat
 
 

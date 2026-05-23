@@ -6,12 +6,26 @@ import kriging
 
 
 class CoKriging(mf_model.MFModel):
-    def __init__(self, x_lf, y_lf, x_hf, y_hf, nugget: float = 1e-3):
+    def __init__(
+        self,
+        x_lf,
+        y_lf,
+        x_hf,
+        y_hf,
+        nugget: float = 1e-3,
+        scale_input=False,
+        bounds=None,
+    ):
 
         # Init the multifidelity model data
-        super().__init__(x_lf, y_lf, x_hf, y_hf)
+        super().__init__(x_lf, y_lf, x_hf, y_hf, bounds=bounds)
 
         self.nugget = nugget
+
+        self.scale_input = scale_input
+        if self.scale_input:
+            self.x = self.x_scale.transform(self.x)
+            self.x_lf = self.x_scale.transform(self.x_lf)
 
         # Store the shapes of the input matrices
         self.n_hf, self.d = np.shape(self.x)
@@ -31,39 +45,36 @@ class CoKriging(mf_model.MFModel):
             self.x, self.y, y_lf_hat, nugget=self.nugget
         )
 
-        # Find a kriging model for the high fidelity data set
-        # This is not completely necessary, may be removed later for efficiency
-        self.kriging_hf = kriging.Kriging(self.x, self.y, nugget=self.nugget)
-
-        # Set up the cokriging covariance matrix
-        self.C, self.inv_C = self.calculate_covariance()
-
         # Assemble the combined y vector of cheap and expensive values
         self.yck = np.vstack((self.y_lf, self.y))
 
-        # Find the mean
-        self.mean = self.calculate_mean()
+        self.C, self.mean, self.sigma2, self.b = self._calculate_constants()
 
-    def calculate_mean(self):
-        F = np.ones((self.n, 1))
-        mu = np.transpose(F) @ self.inv_C @ self.yck
-        mu = mu / (np.transpose(F) @ self.inv_C @ F)
-        return mu
+    def _calculate_constants(self):
+        C = self._calculate_covariance()
+        try:
+            L = np.linalg.cholesky(C)
+        except np.linalg.LinAlgError:
+            return -1e20  # invalid region for optimizer
 
-    def calculate_sigma(self, inv_psi, mu):
-        F = np.ones((self.n, 1))
-        sigma = (
-            (1.0 / self.n) * np.transpose(self.y - F * mu) @ inv_psi @ (self.y - F * mu)
-        )
-        return sigma
+        ones = np.ones((self.n, 1))
 
-    def calculate_b(self):
-        b = self.inv_psi @ (self.y - np.ones((self.n, 1)) * self.mu)
-        return b
+        # solve Ψ⁻¹y
+        alpha = np.linalg.solve(L.T, np.linalg.solve(L, self.yck))
+
+        # solve Ψ⁻¹1
+        beta = np.linalg.solve(L.T, np.linalg.solve(L, ones))
+
+        mu = (ones.T @ alpha) / (ones.T @ beta)
+        r = self.yck - ones * mu
+        b = np.linalg.solve(L.T, np.linalg.solve(L, r))
+        sigma2 = (r.T @ b) / self.n
+
+        return C, mu, sigma2, b
 
     # Function calculates the covariance matrix for cokriging using kriging constants solved
     # for in the low fidelity and difference models
-    def calculate_covariance(self):
+    def _calculate_covariance(self):
 
         # psi_c(X_e, X_c)
         psic_ec = self.kriging_lf._calculate_correlation(
@@ -102,10 +113,13 @@ class CoKriging(mf_model.MFModel):
             + self.kriging_diff.sigma * self.kriging_diff.psi
         )
 
-        inv_C_mat = np.linalg.inv(C_mat)
-        return C_mat, inv_C_mat
+        return C_mat
 
     def evaluate(self, x_new):
+
+        # Scale the input if a scale was used
+        if self.scale_input:
+            x_new = self.x_scale.transform(x_new)
 
         # Solve for correlation values of evaluation points
         psic_c_new = self.kriging_lf._calculate_correlation(
@@ -130,7 +144,5 @@ class CoKriging(mf_model.MFModel):
 
         # Generate evaluation points
         F = np.ones((self.n, 1))
-        y_pred = self.mean + np.transpose(c_vec) @ self.inv_C @ (
-            self.yck - F * self.mean
-        )
+        y_pred = self.mean + np.transpose(c_vec) @ self.b
         return y_pred
