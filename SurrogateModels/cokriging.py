@@ -15,6 +15,7 @@ class CoKriging(mf_model.MFModel):
         nugget: float = 1e-3,
         scale_input=False,
         bounds=None,
+        lf_kriging_model=None,
     ):
 
         # Init the multifidelity model data
@@ -33,7 +34,10 @@ class CoKriging(mf_model.MFModel):
         self.n = self.n_lf + self.n_hf
 
         # Set up the low fidelity kriging model
-        self.kriging_lf = kriging.Kriging(self.x_lf, self.y_lf, nugget=self.nugget)
+        if lf_kriging_model is None:
+            self.kriging_lf = kriging.Kriging(self.x_lf, self.y_lf, nugget=self.nugget)
+        else:
+            self.kriging_lf = lf_kriging_model
 
         # Match find values for the low fidelity data set at exactly the same
         # locations as the high fidelity data
@@ -75,18 +79,20 @@ class CoKriging(mf_model.MFModel):
     # Function calculates the covariance matrix for cokriging using kriging constants solved
     # for in the low fidelity and difference models
     def _calculate_covariance(self):
-
         # psi_c(X_e, X_c)
+        diff_ec = np.abs(self.x[:, None, :] - self.x_lf[None, :, :])
         psic_ec = self.kriging_lf._calculate_correlation(
-            self.kriging_lf.theta, self.kriging_lf.p, self.x, self.x_lf
+            self.kriging_lf.theta, self.kriging_lf.p, diff_ec
         )
         # psi_c(X_c, X_e)
+        diff_ce = np.abs(self.x_lf[:, None, :] - self.x[None, :, :])
         psic_ce = self.kriging_lf._calculate_correlation(
-            self.kriging_lf.theta, self.kriging_lf.p, self.x_lf, self.x
+            self.kriging_lf.theta, self.kriging_lf.p, diff_ce
         )
         # psi_c(X_e, X_e)
+        diff_e = np.abs(self.x[:, None, :] - self.x[None, :, :])
         psic_e = self.kriging_lf._calculate_correlation(
-            self.kriging_lf.theta, self.kriging_lf.p, self.x, self.x
+            self.kriging_lf.theta, self.kriging_lf.p, diff_e
         )
 
         n = self.n_hf + self.n_lf
@@ -122,16 +128,18 @@ class CoKriging(mf_model.MFModel):
             x_new = self.x_scale.transform(x_new)
 
         # Solve for correlation values of evaluation points
+        diff_c_new = np.abs(self.x_lf[:, None, :] - x_new[None, :, :])
         psic_c_new = self.kriging_lf._calculate_correlation(
-            self.kriging_lf.theta, self.kriging_lf.p, self.x_lf, x_new
+            self.kriging_lf.theta, self.kriging_lf.p, diff_c_new
         )
 
+        diff_e_new = np.abs(self.x[:, None, :] - x_new[None, :, :])
         psic_e_new = self.kriging_lf._calculate_correlation(
-            self.kriging_lf.theta, self.kriging_lf.p, self.x, x_new
+            self.kriging_lf.theta, self.kriging_lf.p, diff_e_new
         )
 
         psid_e_new = self.kriging_diff._calculate_correlation(
-            self.kriging_diff.theta, self.kriging_diff.p, self.x, x_new
+            self.kriging_diff.theta, self.kriging_diff.p, diff_e_new
         )
 
         # Construct the covariance matrix for evaluation points

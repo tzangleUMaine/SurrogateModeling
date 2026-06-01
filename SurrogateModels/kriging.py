@@ -20,6 +20,9 @@ class Kriging(model.Model):
         if scale_input:
             self.x = self.x_scale.transform(self.x)
 
+        # Generate a matrix of theta elements of the same size as the dimensions
+        self.diffs = np.abs(self.x[:, None, :] - self.x[None, :, :])
+
         self.nugget = nugget
 
         self.theta, self.p = self.calculate_hyper_params()
@@ -49,12 +52,13 @@ class Kriging(model.Model):
 
     def calculate_mle(self, theta, p):
 
-        psi = self._calculate_correlation(theta, p, self.x, self.x)
+        psi = self._calculate_correlation(theta, p, self.diffs)
         psi += np.eye(self.n) * self.nugget
 
         try:
             L = np.linalg.cholesky(psi)
         except np.linalg.LinAlgError:
+            print("Error in Cholesky Decomp")
             return -1e20  # invalid region for optimizer
 
         ones = np.ones((self.n, 1))
@@ -76,12 +80,13 @@ class Kriging(model.Model):
 
     def _calculate_kriging_constants(self, theta, p):
 
-        psi = self._calculate_correlation(theta, p, self.x, self.x)
+        psi = self._calculate_correlation(theta, p, self.diffs)
         psi += np.eye(self.n) * self.nugget
 
         try:
             L = np.linalg.cholesky(psi)
         except np.linalg.LinAlgError:
+            print("Error in Cholesky Decomp")
             return -1e20  # invalid region for optimizer
 
         ones = np.ones((self.n, 1))
@@ -99,9 +104,7 @@ class Kriging(model.Model):
 
         return mu, sigma2, b, psi
 
-    def _calculate_correlation(self, theta, p, X_1, X_2):
-        # Generate a matrix of theta elements of the same size as the dimensions
-        diffs = np.abs(X_1[:, None, :] - X_2[None, :, :])
+    def _calculate_correlation(self, theta, p, diffs):
 
         # Use the power vector for each of the difference matrix elements
         diffs_powered = diffs ** p[np.newaxis, np.newaxis, :]
@@ -119,7 +122,9 @@ class Kriging(model.Model):
         if self.scale_input:
             x_new = self.x_scale.transform(x_new)
 
-        psi_new = self._calculate_correlation(self.theta, self.p, x_new, self.x)
+        diff_x_new = np.abs(x_new[:, None, :] - self.x[None, :, :])
+
+        psi_new = self._calculate_correlation(self.theta, self.p, diff_x_new)
         y_hat = psi_new @ self.b + self.mu
 
         return y_hat
@@ -132,6 +137,8 @@ class DiffKriging(Kriging):
 
         # Store the size of the inputs
         self.n, self.d = np.shape(self.x)
+
+        self.diffs = np.abs(self.x[:, None, :] - self.x[None, :, :])
 
         self.nugget = nugget
 
