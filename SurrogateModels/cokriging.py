@@ -3,6 +3,7 @@ import matplotlib.pyplot as plt
 import scipy.optimize
 import mf_model
 import kriging
+import time
 
 
 class CoKriging(mf_model.MFModel):
@@ -15,9 +16,10 @@ class CoKriging(mf_model.MFModel):
         nugget: float = 1e-3,
         scale_input=False,
         bounds=None,
-        lf_kriging_model=None,
+        lf_kriging_model: kriging.Kriging = None,
     ):
 
+        t0 = time.perf_counter()
         # Init the multifidelity model data
         super().__init__(x_lf, y_lf, x_hf, y_hf, bounds=bounds)
 
@@ -38,6 +40,7 @@ class CoKriging(mf_model.MFModel):
             self.kriging_lf = kriging.Kriging(self.x_lf, self.y_lf, nugget=self.nugget)
         else:
             self.kriging_lf = lf_kriging_model
+            t0 = t0 - self.kriging_lf.training_time
 
         # Match find values for the low fidelity data set at exactly the same
         # locations as the high fidelity data
@@ -53,6 +56,8 @@ class CoKriging(mf_model.MFModel):
         self.yck = np.vstack((self.y_lf, self.y))
 
         self.C, self.mean, self.sigma2, self.b = self._calculate_constants()
+
+        self.training_time = time.perf_counter() - t0
 
     def _calculate_constants(self):
         C = self._calculate_covariance()

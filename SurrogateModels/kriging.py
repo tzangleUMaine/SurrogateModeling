@@ -4,6 +4,7 @@ import model
 import scipy.optimize
 import scipy.linalg
 import typing
+import time
 
 
 class Kriging(model.Model):
@@ -15,6 +16,9 @@ class Kriging(model.Model):
         scale_input=False,
         bounds=None,
     ):
+        # Set a timer to track training time
+        t0 = time.perf_counter()
+
         super().__init__(x_mat, y_vec, bounds)
         self.scale_input = scale_input
         if scale_input:
@@ -31,20 +35,45 @@ class Kriging(model.Model):
             self.theta, self.p
         )
 
+        self.training_time = time.perf_counter() - t0
+
     def calculate_hyper_params(self):
         # fun = lambda vars: (-self.calculate_mle(vars[: self.d], vars[self.d :]))
-        x0 = np.zeros(self.d * 2, dtype=float)
-        x0[self.d :] = 2
-        bounds = [(-3, 3)] * self.d + [(1, 2)] * self.d
-        logger = MinimizeLogger(self._objective_function)
-        res, _ = logger.run(x0, method="L-BFGS-B", bounds=bounds)
-        theta_opt = 10 ** res.x[: self.d]
-        p_opt = res.x[self.d :]
+        assume_gaussian = True
+        if assume_gaussian:
+            x0 = np.zeros(self.d, dtype=float)
+            bounds = [(-3, 3)] * self.d
+
+            logger = MinimizeLogger(self._objective_function2)
+            res, history = logger.run(x0, method="L-BFGS-B", bounds=bounds)
+            self.iter = logger.iter
+
+            theta_opt = 10 ** res.x[: self.d]
+            p_opt = np.ones(self.d, dtype=float) * 2.0
+        else:
+            x0 = np.zeros(self.d * 2, dtype=float)
+            x0[self.d :] = 2
+            bounds = [(-3, 3)] * self.d + [(1, 2)] * self.d
+
+            logger = MinimizeLogger(self._objective_function)
+            res, history = logger.run(x0, method="L-BFGS-B", bounds=bounds)
+            self.iter = logger.iter
+
+            theta_opt = 10 ** res.x[: self.d]
+            p_opt = res.x[self.d :]
         return theta_opt, p_opt
 
     def _objective_function(self, vars):
         beta = vars[: self.d]
         p = vars[self.d :]
+
+        # optimize theta as log10(theta)
+        theta = 10**beta
+        return -self.calculate_mle(theta, p)
+
+    def _objective_function2(self, vars):
+        beta = vars[: self.d]
+        p = np.ones(self.d, dtype=float) * 2
 
         # optimize theta as log10(theta)
         theta = 10**beta
@@ -131,6 +160,7 @@ class Kriging(model.Model):
 
 
 class DiffKriging(Kriging):
+
     def __init__(self, x_mat, yh, yl, nugget=1e-7):
 
         self.x = x_mat

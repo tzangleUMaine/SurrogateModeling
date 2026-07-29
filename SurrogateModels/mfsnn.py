@@ -3,7 +3,7 @@ from __future__ import annotations
 import torch
 import matplotlib.pyplot as plt
 import torch.optim.optimizer
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, TensorDataset
 import numpy as np
 
 ## Doing it the Pytorch way without using our custom feature extraction
@@ -34,25 +34,31 @@ class MLPNetwork(torch.nn.Module, model.Model):
         epochs: int = 500,
         learning_rate=0.001,
         weight_decay=0.001,
-        batch_size=120,
+        batch_size=10000,
         weight_file="network_weights",
         load_weights=False,
         write_weights=False,
         train=True,
+        scale_input=False,
+        bounds=None,
     ):
         torch.nn.Module.__init__(self)
-        model.Model.__init__(self, X, y)
+        model.Model.__init__(self, X, y, bounds)
 
-        X_tensor = torch.as_tensor(X, dtype=torch.float32)
-        y_tensor = torch.as_tensor(y, dtype=torch.float32)
+        self.scale_input = scale_input
+
+        # Scale the input matrix
+        if scale_input:
+            self.x = self.x_scale.transform(self.x)
+            X_test = self.x_scale.transform(X_test)
+
+        X_tensor = torch.as_tensor(self.x, dtype=torch.float32)
+        y_tensor = torch.as_tensor(self.y, dtype=torch.float32)
         X_test_tensor = torch.as_tensor(X_test, dtype=torch.float32)
         y_test_tensor = torch.as_tensor(y_test, dtype=torch.float32)
 
         # Hyper parameters
         self.epochs = epochs
-
-        # Report rate
-        self.report_steps = 1
 
         # Set loss function
         self.loss = loss
@@ -66,12 +72,12 @@ class MLPNetwork(torch.nn.Module, model.Model):
 
         # Store the model data
         self.training_dataloader = DataLoader(
-            list(zip(X_tensor, y_tensor)), shuffle=True, batch_size=self.batch_size
+            TensorDataset(X_tensor, y_tensor), shuffle=True, batch_size=self.batch_size
         )
 
         # Store the test data
         self.test_dataloader = DataLoader(
-            list(zip(X_test_tensor, y_test_tensor)),
+            TensorDataset(X_test_tensor, y_test_tensor),
             shuffle=False,
             batch_size=self.batch_size,
         )
@@ -100,7 +106,7 @@ class MLPNetwork(torch.nn.Module, model.Model):
         # self.apply(self.init_weights)
         # Set the optimizer
         self.optimizer = torch.optim.LBFGS(
-            self.parameters(), lr=learning_rate, max_iter=50
+            self.parameters(), lr=learning_rate, max_iter=20
         )  # , weight_decay = weight_decay)
 
         # Try loading weights from file, if not train the network!
@@ -125,6 +131,9 @@ class MLPNetwork(torch.nn.Module, model.Model):
 
     # Evaluate function defines method for use in generic model class
     def evaluate(self, x_in):
+        if self.scale_input:
+            x_new = self.x_scale.transform(x_new)
+
         x_tensor = torch.as_tensor(x_in, dtype=torch.float32)
         with torch.no_grad():
             return self.forward(x_tensor)
@@ -183,14 +192,15 @@ class MLPNetwork(torch.nn.Module, model.Model):
                     loss_t.backward()
                     return loss_t
 
-                self.optimizer.step(closure)
+                self.optimizer.step(closure=closure)
+                # self.optimizer.zero_grad()
+                # pred = self.forward(X)
+                # loss_t = self.loss(pred, y)
+                # loss_t.backward()
+                # self.optimizer.step()
 
             train_error = self.training_accuracy()
             test_error = self.testing_accuracy()
-            if t % self.report_steps == 0:
-                print(
-                    f"Epoch: {t}   || Train Error: {train_error} || Test Error: {test_error}\n"
-                )
             train_error_history.append(train_error)
             test_error_history.append(test_error)
 
@@ -216,6 +226,7 @@ class MLPNetwork(torch.nn.Module, model.Model):
             linestyle="-",
         )
         plt.legend()
+        plt.yscale("log")
         plt.xlabel("Epoch")
         plt.ylabel("Error")
 
