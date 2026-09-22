@@ -7,7 +7,7 @@ from torch.utils.data import DataLoader, TensorDataset
 import numpy as np
 
 ## Doing it the Pytorch way without using our custom feature extraction
-DEVICE = "cpu"
+DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 import typing
 
 import mfs_functions
@@ -45,13 +45,14 @@ class MLPNetwork(torch.nn.Module, model.Model):
         torch.nn.Module.__init__(self)
         model.Model.__init__(self, X, y, bounds)
 
+        self.device = torch.device(DEVICE)
         self.scale_input = scale_input
 
         # Scale the input matrix
-        if scale_input:
+        if self.scale_input:
             self.x = self.x_scale.transform(self.x)
-            X_test = self.x_scale.transform(X_test)
-
+            # X_test = self.x_scale.transform(X_test)
+        print(self.x)
         X_tensor = torch.as_tensor(self.x, dtype=torch.float32)
         y_tensor = torch.as_tensor(self.y, dtype=torch.float32)
         X_test_tensor = torch.as_tensor(X_test, dtype=torch.float32)
@@ -82,6 +83,8 @@ class MLPNetwork(torch.nn.Module, model.Model):
             batch_size=self.batch_size,
         )
 
+        training_size = len(self.test_dataloader.dataset)
+
         # Generate the neural network
         _, input_size = X_tensor.shape
         _, output_size = y_tensor.shape
@@ -102,12 +105,16 @@ class MLPNetwork(torch.nn.Module, model.Model):
 
         self._layers = torch.nn.Sequential(*nn_layers)
 
+        # Move the whole module to its target device once, up front, so every
+        # later call (train, evaluate, load_state_dict) sees consistent placement
+        self.to(self.device)
+
         # Apply initial weights
         # self.apply(self.init_weights)
         # Set the optimizer
-        self.optimizer = torch.optim.LBFGS(
-            self.parameters(), lr=learning_rate, max_iter=20
-        )  # , weight_decay = weight_decay)
+        self.optimizer = torch.optim.AdamW(
+            self.parameters(), lr=learning_rate, weight_decay=weight_decay
+        )
 
         # Try loading weights from file, if not train the network!
         if load_weights:
@@ -130,74 +137,82 @@ class MLPNetwork(torch.nn.Module, model.Model):
         return x
 
     # Evaluate function defines method for use in generic model class
+    # This is the only boundary method: it accepts numpy (or tensor) input,
+    # handles the device transfer itself, and always returns a plain numpy
+    # array so it composes with the numpy-based helpers in model.Model.
     def evaluate(self, x_in):
         if self.scale_input:
-            x_new = self.x_scale.transform(x_new)
+            x_in = self.x_scale.transform(x_in)
 
-        x_tensor = torch.as_tensor(x_in, dtype=torch.float32)
+        x_tensor = torch.as_tensor(x_in, dtype=torch.float32, device=self.device)
         with torch.no_grad():
-            return self.forward(x_tensor)
+            y_hat = self.forward(x_tensor)
+        return y_hat.detach().cpu().numpy()
 
     # Calculates the training error using the given loss function
-    def training_accuracy(self, device=DEVICE):
+    # Internal accuracy/training code stays entirely in tensor-space on
+    # self.device and calls forward() directly -- never evaluate(), which is
+    # the public numpy-in/numpy-out boundary.
+    def training_accuracy(self):
         # Validation loop
-        training_size = len(self.training_dataloader.dataset)
-        train_error = 0
+        training_size = len(self.training_dataloader)
+        running_error = 0.0
 
         with torch.no_grad():
             for X, y in self.training_dataloader:
-                X = X.to(device)
-                y = y.to(device)
+                X = X.to(self.device)
+                y = y.to(self.device)
                 pred = self.forward(X)
-                train_error += self.loss(pred, y)
+                running_error += self.loss(pred, y).item()
 
-        train_error /= training_size
+        train_error = running_error / training_size
 
-        return train_error
+        return np.sqrt(train_error)
 
-    def testing_accuracy(self, device=DEVICE):
+    def testing_accuracy(self):
         # Validation loop
-        training_size = len(self.test_dataloader.dataset)
-        train_error = 0.0
+        testing_size = len(self.test_dataloader)
+        running_error = 0.0
 
-        for X, y in self.test_dataloader:
-            X = X.to(device)
-            y = y.to(device)
-            with torch.no_grad():
+        with torch.no_grad():
+            for X, y in self.test_dataloader:
+                X = X.to(self.device)
+                y = y.to(self.device)
                 pred = self.forward(X)
-                train_error += self.loss(pred, y)
+                running_error += self.loss(pred, y).item()
 
-        train_error /= training_size
+        test_error = running_error / testing_size
 
-        return train_error
+        return np.sqrt(test_error)
 
     # Train uses backpropogation to solve for the model parameters
-    def train(self, device=DEVICE):
-        self.to(device)
+    def train(self):
         train_error_history = []
         test_error_history = []
         for t in range(self.epochs):
             # Train loop
             for X, y in self.training_dataloader:
-                X = X.to(device)
-                y = y.to(device)
+                X = X.to(self.device)
+                y = y.to(self.device)
 
-                def closure():
-                    # Compute prediction and loss
-                    pred = self.forward(X)
-                    loss_t = self.loss(pred, y)
+                # def closure():
+                #     # Compute prediction and loss
+                #     pred = self.forward(X)
+                #     loss_t = self.loss(pred, y)
 
-                    # Backpropagation
-                    self.optimizer.zero_grad()
-                    loss_t.backward()
-                    return loss_t
+                #     # Backpropagation
+                #     self.optimizer.zero_grad()
+                #     loss_t.backward()
+                #     return loss_t
 
-                self.optimizer.step(closure=closure)
-                # self.optimizer.zero_grad()
-                # pred = self.forward(X)
-                # loss_t = self.loss(pred, y)
-                # loss_t.backward()
-                # self.optimizer.step()
+                # self.optimizer.step(closure=closure)
+                self.optimizer.zero_grad()
+                pred = self.forward(X)
+                loss_t = self.loss(pred, y)
+                loss_t.backward()
+                self.optimizer.step()
+                if t % 100 == 0:
+                    print(loss_t)
 
             train_error = self.training_accuracy()
             test_error = self.testing_accuracy()
@@ -226,7 +241,7 @@ class MLPNetwork(torch.nn.Module, model.Model):
             linestyle="-",
         )
         plt.legend()
-        plt.yscale("log")
+        # plt.yscale("log")
         plt.xlabel("Epoch")
         plt.ylabel("Error")
 
@@ -252,6 +267,8 @@ class CompositeNN(torch.nn.Module, mf_model.MFModel):
     ):
         torch.nn.Module.__init__(self)
         model.Model.__init__(self, X, y)
+
+        self.device = torch.device(DEVICE)
 
         # Convert numpy arrays into tensors
         X_tensor = torch.as_tensor(X, dtype=torch.float32)
@@ -307,10 +324,13 @@ class CompositeNN(torch.nn.Module, mf_model.MFModel):
         # Generate a linear neural network to create a shortcut for model training
         self._linear_layers = torch.nn.Linear(
             in_features=input_size, out_features=output_size, bias=True
-        ).to(DEVICE)
+        )
 
         # Apply initial weights
         self.apply(self.init_weights)
+
+        # Move the whole module to its target device once, up front
+        self.to(self.device)
 
         # Check whether the network is just being setup or if traing is specified
         if train:
@@ -328,8 +348,6 @@ class CompositeNN(torch.nn.Module, mf_model.MFModel):
         with open(file_name, "w", newline="") as csvfile:
             csv_writer = csv.writer(csvfile, delimiter=",", quotechar="|")
             for X, y in self.training_dataloader:
-                X = X.to(DEVICE)
-                y = y.to(DEVICE)
                 with torch.no_grad():
                     print(X[:][1])
                     csv_writer.writerow(X[:][1])
@@ -340,43 +358,45 @@ class CompositeNN(torch.nn.Module, mf_model.MFModel):
         return y_linear + y_nl
 
     # Evaluate function defines method for use in generic model class
+    # Public boundary method: numpy (or tensor) in, numpy out -- matches the
+    # evaluate() contract used by model.Model and every other model class.
     def evaluate(self, x_in):
-        x_tensor = torch.from_numpy(x_in)
+        x_tensor = torch.as_tensor(x_in, dtype=torch.float32, device=self.device)
         with torch.no_grad():
-            return self.forward(x_tensor)
+            y_hat = self.forward(x_tensor)
+        return y_hat.detach().cpu().numpy()
 
     # Calculates the training error using the given loss function
-    def training_accuracy(self, device=DEVICE):
+    def training_accuracy(self):
         # Validation loop
         training_size = len(self.training_dataloader.dataset)
         train_error = 0.0
 
-        for X, y in self.training_dataloader:
-            X = X.to(device)
-            y = y.to(device)
-            with torch.no_grad():
+        with torch.no_grad():
+            for X, y in self.training_dataloader:
+                X = X.to(self.device)
+                y = y.to(self.device)
                 pred = self.forward(X)
-                train_error += self.loss(pred, y)
+                train_error += self.loss(pred, y).item()
 
         train_error /= training_size
 
-        return train_error
+        return np.sqrt(train_error)
 
-    def testing_accuracy(self, device=DEVICE):
+    def testing_accuracy(self):
         # Validation loop
-        training_size = len(self.test_dataloader.dataset)
-        test_error = 0.0
+        testing_size = len(self.test_dataloader.dataset)
+        running_loss = 0.0
 
-        for X, y in self.test_dataloader:
-            X = X.to(device)
-            y = y.to(device)
-            with torch.no_grad():
+        with torch.no_grad():
+            for X, y in self.test_dataloader:
+                X = X.to(self.device)
+                y = y.to(self.device)
                 pred = self.forward(X)
-                test_error += self.loss(pred, y)
+                running_loss += self.loss(pred, y).item()
 
-        test_error /= training_size
-
-        return test_error
+        test_error = running_loss / testing_size
+        return np.sqrt(test_error)
 
     # Helper function to initialize weights
     def init_weights(self, m):
@@ -385,15 +405,14 @@ class CompositeNN(torch.nn.Module, mf_model.MFModel):
             m.bias.data.fill_(0.01)
 
     # Train uses backpropogation to solve for the model parameters
-    def train(self, device=DEVICE):
-        self.to(device)
+    def train(self):
         train_error_history = []
         test_error_history = []
         for t in range(self.epochs):
             # Train loop
             for X, y in self.training_dataloader:
-                X = X.to(device)
-                y = y.to(device)
+                X = X.to(self.device)
+                y = y.to(self.device)
 
                 def closure():
                     # Compute prediction and loss
@@ -496,8 +515,8 @@ class MultiFidelityNN(torch.nn.Module, mf_model.MFModel):
         )
 
         # Evaluate the LF KAN model at the HF locations
-        y_lf_at_hf = self.low_fidelity_nn.evaluate(self.x).numpy()
-        y_lf_at_hf_test = self.low_fidelity_nn.evaluate(X_hf_test).numpy()
+        y_lf_at_hf = self.low_fidelity_nn.evaluate(self.x)
+        y_lf_at_hf_test = self.low_fidelity_nn.evaluate(X_hf_test)
 
         # Generate the MF KAN model by combining the evaluated data set with the HF data
         x_mf = np.hstack((self.x, y_lf_at_hf))
