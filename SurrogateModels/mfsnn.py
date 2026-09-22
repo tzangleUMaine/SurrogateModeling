@@ -52,11 +52,13 @@ class MLPNetwork(torch.nn.Module, model.Model):
         if self.scale_input:
             self.x = self.x_scale.transform(self.x)
             # X_test = self.x_scale.transform(X_test)
-        print(self.x)
-        X_tensor = torch.as_tensor(self.x, dtype=torch.float32)
-        y_tensor = torch.as_tensor(self.y, dtype=torch.float32)
-        X_test_tensor = torch.as_tensor(X_test, dtype=torch.float32)
-        y_test_tensor = torch.as_tensor(y_test, dtype=torch.float32)
+
+        # Build tensors directly on the target device so batches drawn from the
+        # DataLoader are already in place -- no per-batch host-to-device copy.
+        X_tensor = torch.as_tensor(self.x, dtype=torch.float32, device=self.device)
+        y_tensor = torch.as_tensor(self.y, dtype=torch.float32, device=self.device)
+        X_test_tensor = torch.as_tensor(X_test, dtype=torch.float32, device=self.device)
+        y_test_tensor = torch.as_tensor(y_test, dtype=torch.float32, device=self.device)
 
         # Hyper parameters
         self.epochs = epochs
@@ -160,8 +162,6 @@ class MLPNetwork(torch.nn.Module, model.Model):
 
         with torch.no_grad():
             for X, y in self.training_dataloader:
-                X = X.to(self.device)
-                y = y.to(self.device)
                 pred = self.forward(X)
                 running_error += self.loss(pred, y).item()
 
@@ -176,8 +176,6 @@ class MLPNetwork(torch.nn.Module, model.Model):
 
         with torch.no_grad():
             for X, y in self.test_dataloader:
-                X = X.to(self.device)
-                y = y.to(self.device)
                 pred = self.forward(X)
                 running_error += self.loss(pred, y).item()
 
@@ -186,26 +184,13 @@ class MLPNetwork(torch.nn.Module, model.Model):
         return np.sqrt(test_error)
 
     # Train uses backpropogation to solve for the model parameters
-    def train(self):
+    def train(self, eval_interval=10):
         train_error_history = []
         test_error_history = []
+        train_error = test_error = None
         for t in range(self.epochs):
             # Train loop
             for X, y in self.training_dataloader:
-                X = X.to(self.device)
-                y = y.to(self.device)
-
-                # def closure():
-                #     # Compute prediction and loss
-                #     pred = self.forward(X)
-                #     loss_t = self.loss(pred, y)
-
-                #     # Backpropagation
-                #     self.optimizer.zero_grad()
-                #     loss_t.backward()
-                #     return loss_t
-
-                # self.optimizer.step(closure=closure)
                 self.optimizer.zero_grad()
                 pred = self.forward(X)
                 loss_t = self.loss(pred, y)
@@ -214,8 +199,12 @@ class MLPNetwork(torch.nn.Module, model.Model):
                 if t % 100 == 0:
                     print(loss_t)
 
-            train_error = self.training_accuracy()
-            test_error = self.testing_accuracy()
+            # Computing train/test accuracy requires a full extra forward pass
+            # over each dataset, so only do it periodically rather than every
+            # epoch, and forward-fill the skipped epochs for plotting.
+            if t % eval_interval == 0 or t == self.epochs - 1:
+                train_error = self.training_accuracy()
+                test_error = self.testing_accuracy()
             train_error_history.append(train_error)
             test_error_history.append(test_error)
 
@@ -270,11 +259,12 @@ class CompositeNN(torch.nn.Module, mf_model.MFModel):
 
         self.device = torch.device(DEVICE)
 
-        # Convert numpy arrays into tensors
-        X_tensor = torch.as_tensor(X, dtype=torch.float32)
-        y_tensor = torch.as_tensor(y, dtype=torch.float32)
-        X_test_tensor = torch.as_tensor(X_test, dtype=torch.float32)
-        y_test_tensor = torch.as_tensor(y_test, dtype=torch.float32)
+        # Convert numpy arrays into tensors, built directly on the target
+        # device so batches drawn from the DataLoader need no per-batch copy.
+        X_tensor = torch.as_tensor(X, dtype=torch.float32, device=self.device)
+        y_tensor = torch.as_tensor(y, dtype=torch.float32, device=self.device)
+        X_test_tensor = torch.as_tensor(X_test, dtype=torch.float32, device=self.device)
+        y_test_tensor = torch.as_tensor(y_test, dtype=torch.float32, device=self.device)
 
         # Hyper parameters
         self.epochs = epochs
@@ -294,12 +284,12 @@ class CompositeNN(torch.nn.Module, mf_model.MFModel):
 
         # Store the model data
         self.training_dataloader = DataLoader(
-            list(zip(X_tensor, y_tensor)), shuffle=True, batch_size=self.batch_size
+            TensorDataset(X_tensor, y_tensor), shuffle=True, batch_size=self.batch_size
         )
 
         # Store the test data
         self.test_dataloader = DataLoader(
-            list(zip(X_test_tensor, y_test_tensor)),
+            TensorDataset(X_test_tensor, y_test_tensor),
             shuffle=False,
             batch_size=self.batch_size,
         )
@@ -374,8 +364,6 @@ class CompositeNN(torch.nn.Module, mf_model.MFModel):
 
         with torch.no_grad():
             for X, y in self.training_dataloader:
-                X = X.to(self.device)
-                y = y.to(self.device)
                 pred = self.forward(X)
                 train_error += self.loss(pred, y).item()
 
@@ -390,8 +378,6 @@ class CompositeNN(torch.nn.Module, mf_model.MFModel):
 
         with torch.no_grad():
             for X, y in self.test_dataloader:
-                X = X.to(self.device)
-                y = y.to(self.device)
                 pred = self.forward(X)
                 running_loss += self.loss(pred, y).item()
 
@@ -405,14 +391,13 @@ class CompositeNN(torch.nn.Module, mf_model.MFModel):
             m.bias.data.fill_(0.01)
 
     # Train uses backpropogation to solve for the model parameters
-    def train(self):
+    def train(self, eval_interval=10):
         train_error_history = []
         test_error_history = []
+        train_error = test_error = None
         for t in range(self.epochs):
             # Train loop
             for X, y in self.training_dataloader:
-                X = X.to(self.device)
-                y = y.to(self.device)
 
                 def closure():
                     # Compute prediction and loss
@@ -426,13 +411,17 @@ class CompositeNN(torch.nn.Module, mf_model.MFModel):
 
                 self.optimizer.step(closure)
 
-            train_error = self.training_accuracy()
-            test_error = self.testing_accuracy()
-            if t % self.report_steps == 0:
-                print(f"----Progress Update----")
-                print(
-                    f"Epoch: {t}   || Train Error: {train_error} || Test Error: {test_error}\n"
-                )
+            # Computing train/test accuracy requires a full extra forward pass
+            # over each dataset, so only do it periodically rather than every
+            # epoch, and forward-fill the skipped epochs for plotting.
+            if t % eval_interval == 0 or t == self.epochs - 1:
+                train_error = self.training_accuracy()
+                test_error = self.testing_accuracy()
+                if t % self.report_steps == 0:
+                    print(f"----Progress Update----")
+                    print(
+                        f"Epoch: {t}   || Train Error: {train_error} || Test Error: {test_error}\n"
+                    )
             train_error_history.append(train_error)
             test_error_history.append(test_error)
 
@@ -537,12 +526,11 @@ class MultiFidelityNN(torch.nn.Module, mf_model.MFModel):
         )
 
     def evaluate(self, x):
-        with torch.no_grad():
-            return self.forward(x)
+        return self.forward(x)
 
     def forward(self, x):
         # Evaluate the LF KAN model at the HF locations
-        y_lf_at_x = self.low_fidelity_nn.evaluate(x).numpy().reshape(-1, 1)
+        y_lf_at_x = self.low_fidelity_nn.evaluate(x).reshape(-1, 1)
 
         # Generate the MF input by combining x and y_lf_at_x
         x_mf = np.hstack((x, y_lf_at_x))
