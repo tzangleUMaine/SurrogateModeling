@@ -1,0 +1,124 @@
+{'iter': 0, 'x': array([0.42521958, 1.81830769]), 'f': array([[-30.07686017]])}
+{'iter': 1, 'x': array([0.56595849, 1.88400506]), 'f': array([[-33.19542441]])}
+{'iter': 2, 'x': array([0.74127519, 1.92486525]), 'f': array([[-35.07856589]])}
+{'iter': 3, 'x': array([1.10034416, 1.95149535]), 'f': array([[-36.68623042]])}
+{'iter': 4, 'x': array([8.720951, 2.      ]), 'f': array([[-164.53168373]])}
+Run 1D: seed 0/points 48 complete
+{'iter': 0, 'x': array([0.40647673, 1.80481683]), 'f': array([[-31.5590987]])}
+{'iter': 1, 'x': array([0.5588721 , 1.87591231]), 'f': array([[-35.11631769]])}
+{'iter': 2, 'x': array([0.72978763, 1.91977583]), 'f': array([[-37.21546263]])}
+{'iter': 3, 'x': array([1.05825237, 1.94813069]), 'f': array([[-38.8862027]])}
+{'iter': 4, 'x': array([6.74306961, 2.        ]), 'f': array([[-144.16007732]])}
+{'iter': 5, 'x': array([51.06359766,  2.        ]), 'f': array([[-204.313995]])}
+{'iter': 6, 'x': array([51.06359767,  2.        ]), 'f': array([[-204.31399502]])}
+Run 1D: seed 0/points 49 complete
+{'iter': 0, 'x': array([0.38865142, 1.79136143]), 'f': array([[-33.02409001]])}
+{'iter': 1, 'x': array([0.55197149, 1.86790281]), 'f': array([[-37.03924581]])}
+{'iter': 2, 'x': array([0.71602892, 1.91473971]), 'f': array([[-39.35434299]])}
+{'iter': 3, 'x': array([1.04123897, 1.94494421]), 'f': array([[-41.17302973]])}
+{'iter': 4, 'x': array([5.89470334, 2.        ]), 'f': array([[-130.93144467]])}
+{'iter': 5, 'x': array([73.39491648,  2.        ]), 'f': array([[-194.93016196]])}
+{'iter': 6, 'x': array([73.39491651,  2.        ]), 'f': array([[-194.93016229]])}
+Run 1D: seed 0/points 50 complete
+{'iter': 0, 'x': array([0.37170567, 1.77797573]), 'f': array([[-34.47413783]])}
+{'iter': 1, 'x': array([0.54480561, 1.85997612]), 'f': array([[-38.96292906]])}
+{'iter': 2, 'x': array([0.70668159, 1.90979644]), 'f': array([[-41.51718125]])}
+{'iter': 3, 'x': array([1.01232437, 1.94172895]), 'f': array([[-43.43845659]])}
+{'iter': 4, 'x': array([4.84290203, 2.        ]), 'f': array([[-98.03556428]])}
+{'iter': 5, 'x': array([4.84585071, 1.99999657]), 'f': array([[-98.1289947]])}
+{'iter': 6, 'x': array([81.00454149,  1.99999696]), 'f': array([[-189.65964313]])}
+{'iter': 7, 'x': array([61.3657378,  2.       ]), 'f': array([[-211.6999651]])}
+{'iter': 8, 'x': array([26.35782049,  2.        ]), 'f': array([[-223.70912567]])}
+Run 1D: seed 0/points 51 complete
+{'iter': 0, 'x': array([0.35560227, 1.7646905 ]), 'f': array([[-35.91143941]])}
+{'iter': 1, 'x': array([6.18397686, 2.        ]), 'f': array([[-146.98051647]])}
+{'iter': 2, 'x': array([35.98247386,  2.        ]), 'f': array([[-232.15235806]])}
+{'iter': 3, 'x': array([32.0096461,  2.       ]), 'f': array([[-232.21807728]])}
+{'iter': 4, 'x': array([32.00964601,  2.        ]), 'f': array([[-232.21807733]])}
+Run 1D: seed 0/points 52 complete
+{'iter': 0, 'x': array([0.34030672, 1.75153495]), 'f': array([[-37.33817599]])}
+{'iter': 1, 'x': array([6.42549134, 2.        ]), 'f': array([[-156.84335297]])}
+{'iter': 2, 'x': array([142.9588368,   2.       ]), 'f': array([[-165.28598327]])}
+Run 1D: seed 0/points 53 complete
+{'iter': 0, 'x': array([0.32579945, 1.73854832]), 'f': array([[-38.75719214]])}
+{'iter': 1, 'x': array([6.65693703, 2.        ]), 'f': array([[-166.10070802]])}
+{'iter': 2, 'x': array([44.52384296,  2.        ]), 'f': array([[-244.12328682]])}
+{'iter': 3, 'x': array([44.52384308,  2.        ]), 'f': array([[-244.12328696]])}
+Run 1D: seed 0/points 54 complete
+{'iter': 0, 'x': array([0.31202019, 1.72572982]), 'f': array([[-40.16908837]])}
+Run 1D: seed 0/points 55 complete
+{'iter': 0, 'x': array([0.29893595, 1.71309831]), 'f': array([[-41.57558018]])}
+Run 1D: seed 0/points 56 complete
+{'iter': 0, 'x': array([0.29289322, 1.70710678]), 'f': array([[-43.38436189]])}
+Run 1D: seed 0/points 57 complete
+{'iter': 0, 'x': array([0.29289322, 1.70710678]), 'f': array([[-45.58546985]])}
+Run 1D: seed 0/points 58 complete
+{'iter': 0, 'x': array([0.29289322, 1.70710678]), 'f': array([[-47.81022346]])}
+Run 1D: seed 0/points 59 complete
+{'iter': 0, 'x': array([0.29289322, 1.70710678]), 'f': array([[-50.05821332]])}
+Run 1D: seed 0/points 60 complete
+{'iter': 0, 'x': array([0.29289322, 1.70710678]), 'f': array([[-52.32904396]])}
+Run 1D: seed 0/points 61 complete
+{'iter': 0, 'x': array([0.29289322, 1.70710678]), 'f': array([[-54.62233314]])}
+Run 1D: seed 0/points 62 complete
+{'iter': 0, 'x': array([0.29289322, 1.70710678]), 'f': array([[-56.93771122]])}
+Run 1D: seed 0/points 63 complete
+{'iter': 0, 'x': array([0.29289322, 1.70710678]), 'f': array([[-59.27482051]])}
+Run 1D: seed 0/points 64 complete
+{'iter': 0, 'x': array([0.29289322, 1.70710678]), 'f': array([[-61.6333147]])}
+Run 1D: seed 0/points 65 complete
+{'iter': 0, 'x': array([0.29289322, 1.70710678]), 'f': array([[-64.01285837]])}
+Run 1D: seed 0/points 66 complete
+{'iter': 0, 'x': array([0.29289322, 1.70710678]), 'f': array([[-66.4131264]])}
+Run 1D: seed 0/points 67 complete
+{'iter': 0, 'x': array([0.29289322, 1.70710678]), 'f': array([[-68.83380359]])}
+Run 1D: seed 0/points 68 complete
+{'iter': 0, 'x': array([0.29289322, 1.70710678]), 'f': array([[-71.27458413]])}
+Run 1D: seed 0/points 69 complete
+{'iter': 0, 'x': array([0.29289322, 1.70710678]), 'f': array([[-73.73517124]])}
+Run 1D: seed 0/points 70 complete
+{'iter': 0, 'x': array([0.29289322, 1.70710678]), 'f': array([[-76.21527676]])}
+Run 1D: seed 0/points 71 complete
+{'iter': 0, 'x': array([0.29289322, 1.70710678]), 'f': array([[-78.71462075]])}
+Run 1D: seed 0/points 72 complete
+{'iter': 0, 'x': array([0.29289322, 1.70710678]), 'f': array([[-81.2329312]])}
+Run 1D: seed 0/points 73 complete
+{'iter': 0, 'x': array([0.29289322, 1.70710678]), 'f': array([[-83.76994363]])}
+Run 1D: seed 0/points 74 complete
+{'iter': 0, 'x': array([0.29289322, 1.70710678]), 'f': array([[-86.32540082]])}
+Run 1D: seed 0/points 75 complete
+{'iter': 0, 'x': array([0.29289322, 1.70710678]), 'f': array([[-88.89905253]])}
+Run 1D: seed 0/points 76 complete
+{'iter': 0, 'x': array([0.29289322, 1.70710678]), 'f': array([[-91.49065516]])}
+Run 1D: seed 0/points 77 complete
+{'iter': 0, 'x': array([0.29289322, 1.70710678]), 'f': array([[-94.09997154]])}
+Run 1D: seed 0/points 78 complete
+{'iter': 0, 'x': array([0.29289322, 1.70710678]), 'f': array([[-96.72677066]])}
+Run 1D: seed 0/points 79 complete
+{'iter': 0, 'x': array([0.29289322, 1.70710678]), 'f': array([[-99.37082743]])}
+Run 1D: seed 0/points 80 complete
+{'iter': 0, 'x': array([0.29289322, 1.70710678]), 'f': array([[-102.03192247]])}
+Run 1D: seed 0/points 81 complete
+{'iter': 0, 'x': array([0.29289322, 1.70710678]), 'f': array([[-104.70984185]])}
+Run 1D: seed 0/points 82 complete
+{'iter': 0, 'x': array([0.29289322, 1.70710678]), 'f': array([[-107.40437695]])}
+Run 1D: seed 0/points 83 complete
+{'iter': 0, 'x': array([0.29289322, 1.70710678]), 'f': array([[-110.11532423]])}
+Run 1D: seed 0/points 84 complete
+{'iter': 0, 'x': array([0.29289322, 1.70710678]), 'f': array([[-112.84248505]])}
+Run 1D: seed 0/points 85 complete
+{'iter': 0, 'x': array([0.41426616, 1.58573384]), 'f': array([[-103.6533132]])}
+Run 1D: seed 0/points 86 complete
+Run 1D: seed 0/points 87 complete
+Run 1D: seed 0/points 88 complete
+Run 1D: seed 0/points 89 complete
+Run 1D: seed 0/points 90 complete
+Run 1D: seed 0/points 91 complete
+Run 1D: seed 0/points 92 complete
+Run 1D: seed 0/points 93 complete
+Run 1D: seed 0/points 94 complete
+Run 1D: seed 0/points 95 complete
+Run 1D: seed 0/points 96 complete
+Run 1D: seed 0/points 97 complete
+Run 1D: seed 0/points 98 complete
+Run 1D: seed 0/points 99 complete

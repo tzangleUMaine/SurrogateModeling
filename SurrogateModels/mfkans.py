@@ -7,7 +7,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 ## Doing it the Pytorch way without using our custom feature extraction
-DEVICE = "cpu"
+DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 import typing
 
 import examples.multi_fidelity_functions as mfs
@@ -16,6 +16,46 @@ import model
 import mfsnn
 import data_handler
 import csv
+
+
+# torch.linalg.lstsq on CUDA only implements the 'gels' driver, which requires
+# a full-rank input matrix and raises torch.linalg.LinAlgError the moment one
+# isn't -- common whenever a fit batch is small relative to a KAN's grid/width
+# (e.g. a small-n point in a sample-size sweep). pykan's own curve2coef (used
+# both by our refine_model() CPU workaround's caller, kan.MultKAN.refine(),
+# AND internally by MultKAN.fit()'s default update_grid=True grid-adaptation
+# step) wraps the call in a bare `except: print('lstsq failed')` that
+# swallows the real error and leaves its `coef` local unset, surfacing as an
+# opaque UnboundLocalError far from the actual cause. CPU's default driver
+# (gelsd/gelsy) handles rank-deficient systems correctly instead of crashing,
+# so transparently retry there and move the result back -- this patches every
+# call site project-wide, not just the ones we've hit so far.
+_torch_linalg_lstsq = torch.linalg.lstsq
+
+
+def _lstsq_with_cpu_fallback(*args, **kwargs):
+    try:
+        return _torch_linalg_lstsq(*args, **kwargs)
+    except torch.linalg.LinAlgError:
+        device = next(
+            (a.device for a in args if isinstance(a, torch.Tensor)), None
+        )
+        cpu_args = [a.cpu() if isinstance(a, torch.Tensor) else a for a in args]
+        cpu_kwargs = {
+            k: (v.cpu() if isinstance(v, torch.Tensor) else v)
+            for k, v in kwargs.items()
+        }
+        result = _torch_linalg_lstsq(*cpu_args, **cpu_kwargs)
+        if device is None:
+            return result
+        return torch.return_types.linalg_lstsq(
+            tuple(
+                getattr(result, f).to(device) for f in ("solution", "residuals", "rank", "singular_values")
+            )
+        )
+
+
+torch.linalg.lstsq = _lstsq_with_cpu_fallback
 
 
 class KANModel(kan.KAN, model.Model):
@@ -31,24 +71,53 @@ class KANModel(kan.KAN, model.Model):
         opt: str = "LBFGS",
         n_iter: int = 100,
         lr: float = 1.0,
+        device: str = DEVICE,
+        scale_input: bool = False,
+        scale_output: bool = False,
+        x_scale_method: str = "bounded",
+        y_scale_method: str = "standard",
+        bounds=None,
+        lamb: float = 0.0,
     ):
         g = grid.pop(0)
 
         kan.KAN.__init__(
-            self, width=width, grid=g, k=spline_order, seed=1, device=DEVICE
+            self, width=width, grid=g, k=spline_order, seed=1, device=device
         )
-        model.Model.__init__(self, x_mat=x_mat, y_vec=y_vec)
+        model.Model.__init__(
+            self,
+            x_mat=x_mat,
+            y_vec=y_vec,
+            bounds=bounds,
+            x_scale_method=x_scale_method,
+            y_scale_method=y_scale_method,
+            scale_input=scale_input,
+            scale_output=scale_output,
+        )
 
-        x_mat_tensor = torch.from_numpy(x_mat)
-        y_vec_tensor = torch.from_numpy(y_vec)
-        x_mat_test_tensor = torch.from_numpy(x_mat_test)
-        y_vec_test_tensor = torch.from_numpy(y_vec_test)
+        self.scale_input = scale_input
+        self.scale_output = scale_output
+
+        # self.x / self.y were scaled in place above (by Model.__init__) when
+        # requested; apply that same fitted transform to the held-out test
+        # data so train/test stay on the same scale.
+        if self.scale_input and x_mat_test is not None:
+            x_mat_test = self.x_scale.transform(x_mat_test)
+        if self.scale_output and y_vec_test is not None:
+            y_vec_test = self.y_scale.transform(y_vec_test)
+
+        # kan.KAN runs in float32 and doesn't cast its inputs, and the scale
+        # transforms above can upcast to float64, so cast explicitly here.
+        x_mat_tensor = torch.from_numpy(self.x.astype(np.float32))
+        y_vec_tensor = torch.from_numpy(self.y.astype(np.float32))
+        x_mat_test_tensor = torch.from_numpy(x_mat_test.astype(np.float32))
+        y_vec_test_tensor = torch.from_numpy(y_vec_test.astype(np.float32))
         self.dataset = KANModel.create_dataset_from_test_train_data(
             x_mat_tensor,
             y_vec_tensor,
             x_mat_test_tensor,
             y_vec_test_tensor,
-            device=DEVICE,
+            device=device,
         )
 
         mins = x_mat.min(axis=0)
@@ -65,6 +134,7 @@ class KANModel(kan.KAN, model.Model):
             opt=opt,
             steps=n_iter,
             lr=lr,
+            lamb=lamb,
         )
         self.train_losses += results["train_loss"]
         self.test_losses += results["test_loss"]
@@ -76,18 +146,37 @@ class KANModel(kan.KAN, model.Model):
                 opt=opt,
                 steps=n_iter,
                 lr=lr,
+                lamb=lamb,
             )
-            self.train_losses += results["train_loss"]
-            self.test_losses += results["test_loss"]
+            self.train_losses += self.results["train_loss"]
+            self.test_losses += self.results["test_loss"]
 
     def evaluate(self, x):
-        x_tensor = torch.from_numpy(x)
+        if self.scale_input:
+            x = self.x_scale.transform(x)
+        x_tensor = torch.as_tensor(x, dtype=torch.float32, device=self.device)
         with torch.no_grad():
-            return self.forward(x_tensor)
+            y_hat = self.forward(x_tensor)
+        y_hat = y_hat.detach().cpu().numpy()
+
+        if self.scale_output:
+            y_hat = self.y_scale.inverse(y_hat)
+        return y_hat
 
     def refine_model(self, new_grid: int = None):
+        # pykan's refine() fits new spline coefficients via torch.linalg.lstsq,
+        # which on CUDA only supports the full-rank 'gels' driver and crashes
+        # (UnboundLocalError, via a swallowed _LinAlgError) the moment a
+        # spline-fit batch is rank-deficient; CPU's default driver tolerates
+        # that. Refine on CPU -- it's a one-off per grid stage, not the hot
+        # training loop -- then restore the model to its working device.
+        target_device = self.device
+        self.to("cpu")
+        if self.cache_data is not None:
+            self.cache_data = self.cache_data.to("cpu")
         refined = self.refine(new_grid)
         self.__dict__.update(refined.__dict__)
+        self.to(target_device)
         return self
 
     def plot_fit_error(
@@ -128,7 +217,7 @@ class KANModel(kan.KAN, model.Model):
         ax.set_xlabel("Epoch")
         ax.set_ylabel("Error")
 
-        ax.plot(self.test_losses, color=color, label=label)
+        ax.plot(self.train_losses, color=color, label=label)
         return ax
 
     @classmethod
@@ -172,10 +261,11 @@ class CompositeKANModel(kan.KAN, model.Model):
         opt: str = "LBFGS",
         n_iter: int = 100,
         lr: float = 1.0,
+        device: str = DEVICE,
     ):
         g = grid.pop(0)
         kan.KAN.__init__(
-            self, width=width, grid=g, k=spline_order, seed=1, device=DEVICE
+            self, width=width, grid=g, k=spline_order, seed=1, device=device
         )
         model.Model.__init__(self, x_mat=x_mat, y_vec=y_vec)
         x_mat_tensor = torch.from_numpy(x_mat)
@@ -187,7 +277,7 @@ class CompositeKANModel(kan.KAN, model.Model):
             y_vec_tensor,
             x_mat_test_tensor,
             y_vec_test_tensor,
-            device=DEVICE,
+            device=device,
         )
 
         mins = x_mat.min(axis=0)
@@ -202,7 +292,7 @@ class CompositeKANModel(kan.KAN, model.Model):
         # Generate a linear neural network to create a shortcut for model training
         self._linear_nn = torch.nn.Linear(
             in_features=self.input_size, out_features=self.output_size, bias=True
-        ).to(DEVICE)
+        ).to(device)
 
         # Initialize storage for test and training monitoring
         self.train_losses = []
@@ -241,18 +331,27 @@ class CompositeKANModel(kan.KAN, model.Model):
         return y_hat
 
     def refine_model(self, new_grid: int = None):
+        # See KANModel.refine_model -- pykan's refine() crashes on CUDA via a
+        # swallowed torch.linalg.lstsq rank-deficiency error, so do this step
+        # on CPU and restore the model to its working device afterward.
+        target_device = self.device
+        self.to("cpu")
+        if self.cache_data is not None:
+            self.cache_data = self.cache_data.to("cpu")
         refined = self.refine(new_grid)
         self.__dict__.update(refined.__dict__)
+        self.to(target_device)
         # Generate a linear neural network to create a shortcut for model training
         self._linear_nn = torch.nn.Linear(
             in_features=self.input_size, out_features=self.output_size, bias=True
-        ).to(DEVICE)
+        ).to(target_device)
         return self
 
     def evaluate(self, x_in, loud=False):
-        x_tensor = torch.from_numpy(x_in)
+        x_tensor = torch.as_tensor(x_in, dtype=torch.float32, device=self.device)
         with torch.no_grad():
-            return self.forward(x_tensor, loud=loud)
+            y_hat = self.forward(x_tensor, loud=loud)
+        return y_hat.detach().cpu().numpy()
 
     def plot_fit_error(
         self,
@@ -292,7 +391,7 @@ class CompositeKANModel(kan.KAN, model.Model):
         ax.set_xlabel("Epoch")
         ax.set_ylabel("Error")
 
-        ax.plot(self.test_losses, color=color, label=label)
+        ax.plot(self.train_losses, color=color, label=label)
         return ax
 
 
@@ -338,14 +437,14 @@ class MFKANModel(mf_model.MFModel):
         )
 
         # Evaluate the LF KAN model at the HF locations
-        y_lf_at_hf = self.lf_kan_model.evaluate(self.x).numpy()
+        y_lf_at_hf = self.lf_kan_model.evaluate(self.x)
         self.lf_at_hf_min = y_lf_at_hf.min()
         self.lf_at_hf_max = y_lf_at_hf.max()
         y_lf_at_hf = data_handler.scale_array(
             y_lf_at_hf, self.lf_at_hf_min, self.lf_at_hf_max
         )
 
-        y_lf_at_hf_test = self.lf_kan_model.evaluate(x_hf_test).numpy()
+        y_lf_at_hf_test = self.lf_kan_model.evaluate(x_hf_test)
         y_lf_at_hf_test = data_handler.scale_array(
             y_lf_at_hf_test, self.lf_at_hf_min, self.lf_at_hf_max
         )
@@ -368,12 +467,11 @@ class MFKANModel(mf_model.MFModel):
         )
 
     def evaluate(self, x, loud=False):
-        with torch.no_grad():
-            return self.forward(x, loud=loud)
+        return self.forward(x, loud=loud)
 
     def forward(self, x, loud=False):
         # Evaluate the LF KAN model at the HF locations
-        y_lf_at_x = self.lf_kan_model.evaluate(x).numpy().reshape(-1, 1)
+        y_lf_at_x = self.lf_kan_model.evaluate(x).reshape(-1, 1)
         y_lf_at_x = data_handler.scale_array(
             y_lf_at_x, self.lf_at_hf_min, self.lf_at_hf_max
         )

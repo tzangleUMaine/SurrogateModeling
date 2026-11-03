@@ -700,6 +700,67 @@ class Zhang22Example5(MultiFidelityTemplate):
         ).reshape(-1, 1)
 
 
+class WingWeight(MultiFidelityTemplate):
+    """Wing weight function, a standard 10D analytical engineering test function
+    (Forrester, Sobester & Keane, "Engineering Design via Surrogate Modelling").
+
+    Models the weight of a light aircraft wing from 10 design/operating
+    variables. The low-fidelity variant omits the additive paint-weight term
+    (Sw * Wp), the simplification commonly used for this benchmark in the
+    multi-fidelity surrogate modeling literature.
+
+    Variable order: Sw, Wfw, A, Lambda (deg), q, taper, tc, Nz, Wdg, Wp
+    """
+
+    def __init__(self):
+        self.bounds = [
+            [150, 200],  # Sw: wing area (ft^2)
+            [220, 300],  # Wfw: weight of fuel in wing (lb)
+            [6, 10],  # A: aspect ratio
+            [-10, 10],  # Lambda: quarter-chord sweep (degrees)
+            [16, 45],  # q: dynamic pressure at cruise (lb/ft^2)
+            [0.5, 1],  # taper: taper ratio
+            [0.08, 0.18],  # tc: airfoil thickness-to-chord ratio
+            [2.5, 6],  # Nz: ultimate load factor
+            [1700, 2500],  # Wdg: flight design gross weight (lb)
+            [0.025, 0.08],  # Wp: paint weight (lb/ft^2)
+        ]
+        self.dimensions = 10
+        self.name = "Wing Weight"
+
+    def _structural_term(self, x):
+        Sw = x[:, 0]
+        Wfw = x[:, 1]
+        A = x[:, 2]
+        sweep = np.radians(x[:, 3])
+        q = x[:, 4]
+        taper = x[:, 5]
+        tc = x[:, 6]
+        Nz = x[:, 7]
+        Wdg = x[:, 8]
+
+        return (
+            0.036
+            * Sw**0.758
+            * Wfw**0.0035
+            * (A / np.cos(sweep) ** 2) ** 0.6
+            * q**0.006
+            * taper**0.04
+            * (100 * tc / np.cos(sweep)) ** (-0.3)
+            * (Nz * Wdg) ** 0.49
+        )
+
+    def high_fidelity(self, x):
+        Sw = x[:, 0]
+        Wp = x[:, 9]
+        y_hf = self._structural_term(x) + Sw * Wp
+        return y_hf.reshape(-1, 1)
+
+    def low_fidelity(self, x):
+        y_lf = self._structural_term(x)
+        return y_lf.reshape(-1, 1)
+
+
 def latin_hypercube_sampler(n: int, d: int, bounds: list, seed: int):
     sampler = qmc.LatinHypercube(d=d, seed=seed)
     unit_sample = sampler.random(n)
@@ -728,4 +789,5 @@ increasing_dimensions = {
     "4D": Zhang22Example17,
     "6D": Zhang22Example18,
     "8D": Zhang22Example19,
+    "10D": WingWeight,
 }

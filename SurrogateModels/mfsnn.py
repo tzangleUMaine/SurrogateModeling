@@ -40,18 +40,30 @@ class MLPNetwork(torch.nn.Module, model.Model):
         write_weights=False,
         train=True,
         scale_input=False,
+        scale_output=False,
+        y_scale_method="standard",
         bounds=None,
     ):
         torch.nn.Module.__init__(self)
-        model.Model.__init__(self, X, y, bounds)
+        model.Model.__init__(
+            self, X, y, bounds, y_scale_method=y_scale_method, scale_output=scale_output
+        )
 
         self.device = torch.device(DEVICE)
         self.scale_input = scale_input
+        self.scale_output = scale_output
 
-        # Scale the input matrix
+        # Scale the input matrix -- X_test must use the same fitted x_scale as
+        # the training data, or the model sees out-of-distribution inputs
+        # whenever it's evaluated against the test set during training.
         if self.scale_input:
             self.x = self.x_scale.transform(self.x)
-            # X_test = self.x_scale.transform(X_test)
+            X_test = self.x_scale.transform(X_test)
+
+        # y_scale is fit on the training y above (in Model.__init__); apply
+        # that same fitted transform to y_test so train/test stay comparable.
+        if self.scale_output:
+            y_test = self.y_scale.transform(y_test)
 
         # Build tensors directly on the target device so batches drawn from the
         # DataLoader are already in place -- no per-batch host-to-device copy.
@@ -68,10 +80,6 @@ class MLPNetwork(torch.nn.Module, model.Model):
 
         # Set batch size
         self.batch_size = batch_size
-
-        # Normalize the y data
-        self.datahandler = data_handler.DataHandler(y_tensor)
-        # y = self.datahandler.scale(y)
 
         # Store the model data
         self.training_dataloader = DataLoader(
@@ -149,7 +157,11 @@ class MLPNetwork(torch.nn.Module, model.Model):
         x_tensor = torch.as_tensor(x_in, dtype=torch.float32, device=self.device)
         with torch.no_grad():
             y_hat = self.forward(x_tensor)
-        return y_hat.detach().cpu().numpy()
+        y_hat = y_hat.detach().cpu().numpy()
+
+        if self.scale_output:
+            y_hat = self.y_scale.inverse(y_hat)
+        return y_hat
 
     # Calculates the training error using the given loss function
     # Internal accuracy/training code stays entirely in tensor-space on
@@ -196,8 +208,8 @@ class MLPNetwork(torch.nn.Module, model.Model):
                 loss_t = self.loss(pred, y)
                 loss_t.backward()
                 self.optimizer.step()
-                if t % 100 == 0:
-                    print(loss_t)
+                # if t % 100 == 0:
+                #     print(loss_t)
 
             # Computing train/test accuracy requires a full extra forward pass
             # over each dataset, so only do it periodically rather than every
@@ -230,7 +242,7 @@ class MLPNetwork(torch.nn.Module, model.Model):
             linestyle="-",
         )
         plt.legend()
-        # plt.yscale("log")
+        plt.yscale("log")
         plt.xlabel("Epoch")
         plt.ylabel("Error")
 

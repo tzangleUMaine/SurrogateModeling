@@ -12,7 +12,7 @@ class Kriging(model.Model):
         self,
         x_mat: np.ndarray[float],
         y_vec: np.ndarray[float],
-        nugget: float = 1e-7,
+        nugget: float = 1e-5,
         scale_input=False,
         bounds=None,
     ):

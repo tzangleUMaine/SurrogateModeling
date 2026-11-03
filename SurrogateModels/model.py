@@ -3,14 +3,29 @@ import matplotlib.pyplot as plt
 
 
 class Model:
-    def __init__(self, x_mat, y_vec, bounds=None):
+    def __init__(
+        self,
+        x_mat,
+        y_vec,
+        bounds=None,
+        x_scale_method="bounded",
+        y_scale_method="standard",
+        scale_input=False,
+        scale_output=False,
+    ):
         # Expects input values of:
         # x_mat: matrix of explanatory variables
         # y_vec: vector of response variables
         self.x = x_mat
         self.y = y_vec
         self.n, self.d = np.shape(self.x)
-        self.x_scale = DataTransform(self.x, bounds)
+        self.x_scale = DataTransform(self.x, bounds, method=x_scale_method)
+        self.y_scale = DataTransform(self.y, method=y_scale_method)
+
+        if scale_input:
+            self.x = self.x_scale.transform(self.x)
+        if scale_output:
+            self.y = self.y_scale.transform(self.y)
 
     def evaluate(self, x_in):
         raise NotImplementedError()
@@ -287,19 +302,35 @@ class Model:
 # Simple class to deal with function scaling
 # Probably will need a rewrite but forces users to use a specified data transform type
 class DataTransform:
-    def __init__(self, x=None, bounds=None):
-        if bounds == None:
-            self.bounds = np.vstack((np.min(x, axis=0), np.max(x, axis=0)))
-            if x.shape[1] == 1:
-                self.bounds = self.bounds.T
+    def __init__(self, x=None, bounds=None, method="bounded"):
+        self.method = method
+        if method == "bounded":
+            if bounds == None:
+                self.bounds = np.vstack((np.min(x, axis=0), np.max(x, axis=0)))
+                if x.shape[1] == 1:
+                    self.bounds = self.bounds.T
+            else:
+                self.bounds = np.array(bounds, dtype=float)
+            self.transform = self.bounded_transform
+            self.inverse = self.bounded_inverse
+        elif method == "standard":
+            self.mean = np.mean(x, axis=0)
+            self.std = np.std(x, axis=0)
+            self.transform = self.standard_transform
+            self.inverse = self.standard_inverse
         else:
-            self.bounds = np.array(bounds, dtype=float)
-        self.transform = self.bounded_transform
-        self.inverse = self.bounded_inverse
+            raise ValueError(f"Unknown DataTransform method: {method}")
 
-    # For transforms with known bounds
+    # For transforms with known bounds -- scales into [-1, 1]
     def bounded_transform(self, x):
-        return (x - self.bounds[:, 0]) / (self.bounds[:, 1] - self.bounds[:, 0])
+        return 2 * (x - self.bounds[:, 0]) / (self.bounds[:, 1] - self.bounds[:, 0]) - 1
 
     def bounded_inverse(self, x_inv):
-        return (self.bounds[:, 1] - self.bounds[:, 0]) * x_inv + self.bounds[:, 0]
+        return (x_inv + 1) / 2 * (self.bounds[:, 1] - self.bounds[:, 0]) + self.bounds[:, 0]
+
+    # Z-score transform: distance from the mean in units of standard deviation
+    def standard_transform(self, x):
+        return (x - self.mean) / self.std
+
+    def standard_inverse(self, x_inv):
+        return x_inv * self.std + self.mean
