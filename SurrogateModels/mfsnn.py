@@ -3,7 +3,6 @@ from __future__ import annotations
 import torch
 import matplotlib.pyplot as plt
 import torch.optim.optimizer
-from torch.utils.data import DataLoader, TensorDataset
 import numpy as np
 
 ## Doing it the Pytorch way without using our custom feature extraction
@@ -65,12 +64,14 @@ class MLPNetwork(torch.nn.Module, model.Model):
         if self.scale_output:
             y_test = self.y_scale.transform(y_test)
 
-        # Build tensors directly on the target device so batches drawn from the
-        # DataLoader are already in place -- no per-batch host-to-device copy.
-        X_tensor = torch.as_tensor(self.x, dtype=torch.float32, device=self.device)
-        y_tensor = torch.as_tensor(self.y, dtype=torch.float32, device=self.device)
-        X_test_tensor = torch.as_tensor(X_test, dtype=torch.float32, device=self.device)
-        y_test_tensor = torch.as_tensor(y_test, dtype=torch.float32, device=self.device)
+        # Keep the train/test data as whole tensors on the target device and
+        # batch by indexing them directly. A DataLoader over a TensorDataset
+        # fetches and stacks rows one at a time in Python, which made every
+        # epoch cost O(n) Python calls (~60 ms/epoch at n=3900 on CUDA).
+        self.X_train = torch.as_tensor(self.x, dtype=torch.float32, device=self.device)
+        self.y_train = torch.as_tensor(self.y, dtype=torch.float32, device=self.device)
+        self.X_test = torch.as_tensor(X_test, dtype=torch.float32, device=self.device)
+        self.y_test = torch.as_tensor(y_test, dtype=torch.float32, device=self.device)
 
         # Hyper parameters
         self.epochs = epochs
@@ -81,23 +82,9 @@ class MLPNetwork(torch.nn.Module, model.Model):
         # Set batch size
         self.batch_size = batch_size
 
-        # Store the model data
-        self.training_dataloader = DataLoader(
-            TensorDataset(X_tensor, y_tensor), shuffle=True, batch_size=self.batch_size
-        )
-
-        # Store the test data
-        self.test_dataloader = DataLoader(
-            TensorDataset(X_test_tensor, y_test_tensor),
-            shuffle=False,
-            batch_size=self.batch_size,
-        )
-
-        training_size = len(self.test_dataloader.dataset)
-
         # Generate the neural network
-        _, input_size = X_tensor.shape
-        _, output_size = y_tensor.shape
+        _, input_size = self.X_train.shape
+        _, output_size = self.y_train.shape
 
         # Setup network shape
         nn_layers = []
@@ -106,7 +93,7 @@ class MLPNetwork(torch.nn.Module, model.Model):
             nn_layers.append(activation)
         prev_size = hidden_layer_size[0]
 
-        for layer_size in hidden_layer_size[1:-1]:
+        for layer_size in hidden_layer_size[1:]:
             nn_layers.append(torch.nn.Linear(prev_size, layer_size))
             if activation != "none":
                 nn_layers.append(activation)
@@ -168,30 +155,14 @@ class MLPNetwork(torch.nn.Module, model.Model):
     # self.device and calls forward() directly -- never evaluate(), which is
     # the public numpy-in/numpy-out boundary.
     def training_accuracy(self):
-        # Validation loop
-        training_size = len(self.training_dataloader)
-        running_error = 0.0
-
         with torch.no_grad():
-            for X, y in self.training_dataloader:
-                pred = self.forward(X)
-                running_error += self.loss(pred, y).item()
-
-        train_error = running_error / training_size
+            train_error = self.loss(self.forward(self.X_train), self.y_train).item()
 
         return np.sqrt(train_error)
 
     def testing_accuracy(self):
-        # Validation loop
-        testing_size = len(self.test_dataloader)
-        running_error = 0.0
-
         with torch.no_grad():
-            for X, y in self.test_dataloader:
-                pred = self.forward(X)
-                running_error += self.loss(pred, y).item()
-
-        test_error = running_error / testing_size
+            test_error = self.loss(self.forward(self.X_test), self.y_test).item()
 
         return np.sqrt(test_error)
 
@@ -200,12 +171,15 @@ class MLPNetwork(torch.nn.Module, model.Model):
         train_error_history = []
         test_error_history = []
         train_error = test_error = None
+        n = self.X_train.shape[0]
         for t in range(self.epochs):
-            # Train loop
-            for X, y in self.training_dataloader:
+            # Train loop -- shuffle each epoch, then step through minibatches
+            perm = torch.randperm(n, device=self.device)
+            for i in range(0, n, self.batch_size):
+                idx = perm[i : i + self.batch_size]
                 self.optimizer.zero_grad()
-                pred = self.forward(X)
-                loss_t = self.loss(pred, y)
+                pred = self.forward(self.X_train[idx])
+                loss_t = self.loss(pred, self.y_train[idx])
                 loss_t.backward()
                 self.optimizer.step()
                 # if t % 100 == 0:
@@ -271,12 +245,13 @@ class CompositeNN(torch.nn.Module, mf_model.MFModel):
 
         self.device = torch.device(DEVICE)
 
-        # Convert numpy arrays into tensors, built directly on the target
-        # device so batches drawn from the DataLoader need no per-batch copy.
-        X_tensor = torch.as_tensor(X, dtype=torch.float32, device=self.device)
-        y_tensor = torch.as_tensor(y, dtype=torch.float32, device=self.device)
-        X_test_tensor = torch.as_tensor(X_test, dtype=torch.float32, device=self.device)
-        y_test_tensor = torch.as_tensor(y_test, dtype=torch.float32, device=self.device)
+        # Keep the train/test data as whole tensors on the target device and
+        # batch by indexing them directly -- see MLPNetwork for why a
+        # DataLoader is avoided here.
+        self.X_train = torch.as_tensor(X, dtype=torch.float32, device=self.device)
+        self.y_train = torch.as_tensor(y, dtype=torch.float32, device=self.device)
+        self.X_test = torch.as_tensor(X_test, dtype=torch.float32, device=self.device)
+        self.y_test = torch.as_tensor(y_test, dtype=torch.float32, device=self.device)
 
         # Hyper parameters
         self.epochs = epochs
@@ -294,21 +269,9 @@ class CompositeNN(torch.nn.Module, mf_model.MFModel):
         # self.datahandler = data_handler.DataHandler(y)
         # y = self.datahandler.scale(y)
 
-        # Store the model data
-        self.training_dataloader = DataLoader(
-            TensorDataset(X_tensor, y_tensor), shuffle=True, batch_size=self.batch_size
-        )
-
-        # Store the test data
-        self.test_dataloader = DataLoader(
-            TensorDataset(X_test_tensor, y_test_tensor),
-            shuffle=False,
-            batch_size=self.batch_size,
-        )
-
         # Generate the neural network
-        __, input_size = X_tensor.shape
-        __, output_size = y_tensor.shape
+        __, input_size = self.X_train.shape
+        __, output_size = self.y_train.shape
 
         # Setup non-linear network shape
         self._nl_layers = []
@@ -316,7 +279,7 @@ class CompositeNN(torch.nn.Module, mf_model.MFModel):
         self._nl_layers.append(activation_nl)
         prev_size = layers_nl[0]
 
-        for layer_size in layers_nl[1:-1]:
+        for layer_size in layers_nl[1:]:
             self._nl_layers.append(torch.nn.Linear(prev_size, layer_size))
             self._nl_layers.append(activation_nl)
             prev_size = layer_size
@@ -345,14 +308,12 @@ class CompositeNN(torch.nn.Module, mf_model.MFModel):
             # Run training on network
             self.training_error, self.testing_error = self.train()
 
-    # Simple function to create csv files of dataloader to check output distributions
+    # Simple function to create csv files of the training inputs to check distributions
     def dataloader_write(self, file_name):
         with open(file_name, "w", newline="") as csvfile:
             csv_writer = csv.writer(csvfile, delimiter=",", quotechar="|")
-            for X, y in self.training_dataloader:
-                with torch.no_grad():
-                    print(X[:][1])
-                    csv_writer.writerow(X[:][1])
+            for row in self.X_train.cpu().numpy():
+                csv_writer.writerow(row)
 
     def forward(self, x):
         y_linear = self._linear_layers(x)
@@ -370,30 +331,15 @@ class CompositeNN(torch.nn.Module, mf_model.MFModel):
 
     # Calculates the training error using the given loss function
     def training_accuracy(self):
-        # Validation loop
-        training_size = len(self.training_dataloader.dataset)
-        train_error = 0.0
-
         with torch.no_grad():
-            for X, y in self.training_dataloader:
-                pred = self.forward(X)
-                train_error += self.loss(pred, y).item()
-
-        train_error /= training_size
+            train_error = self.loss(self.forward(self.X_train), self.y_train).item()
 
         return np.sqrt(train_error)
 
     def testing_accuracy(self):
-        # Validation loop
-        testing_size = len(self.test_dataloader.dataset)
-        running_loss = 0.0
-
         with torch.no_grad():
-            for X, y in self.test_dataloader:
-                pred = self.forward(X)
-                running_loss += self.loss(pred, y).item()
+            test_error = self.loss(self.forward(self.X_test), self.y_test).item()
 
-        test_error = running_loss / testing_size
         return np.sqrt(test_error)
 
     # Helper function to initialize weights
@@ -407,9 +353,13 @@ class CompositeNN(torch.nn.Module, mf_model.MFModel):
         train_error_history = []
         test_error_history = []
         train_error = test_error = None
+        n = self.X_train.shape[0]
         for t in range(self.epochs):
-            # Train loop
-            for X, y in self.training_dataloader:
+            # Train loop -- shuffle each epoch, then step through minibatches
+            perm = torch.randperm(n, device=self.device)
+            for i in range(0, n, self.batch_size):
+                idx = perm[i : i + self.batch_size]
+                X, y = self.X_train[idx], self.y_train[idx]
 
                 def closure():
                     # Compute prediction and loss
