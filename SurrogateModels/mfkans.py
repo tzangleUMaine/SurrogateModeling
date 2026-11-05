@@ -67,7 +67,7 @@ class KANModel(kan.KAN, model.Model):
         y_vec_test: np.ndarray[float] = None,
         spline_order: int = 3,
         width: list = [1, 2, 1],
-        grid: list = [3],
+        grid: int | list = [3],
         opt: str = "LBFGS",
         n_iter: int = 100,
         lr: float = 1.0,
@@ -79,10 +79,11 @@ class KANModel(kan.KAN, model.Model):
         bounds=None,
         lamb: float = 0.0,
     ):
-        g = grid.pop(0)
+        # grid is one size, or a list of sizes to refine through in order
+        grids = [grid] if isinstance(grid, int) else list(grid)
 
         kan.KAN.__init__(
-            self, width=width, grid=g, k=spline_order, seed=1, device=device
+            self, width=width, grid=grids[0], k=spline_order, seed=1, device=device
         )
         model.Model.__init__(
             self,
@@ -139,7 +140,7 @@ class KANModel(kan.KAN, model.Model):
         self.train_losses += results["train_loss"]
         self.test_losses += results["test_loss"]
 
-        for g in grid:
+        for g in grids[1:]:
             self.refine_model(g)
             self.results = self.fit(
                 dataset=self.dataset,
@@ -257,21 +258,23 @@ class CompositeKANModel(kan.KAN, model.Model):
         y_vec_test: np.ndarray[float] = None,
         spline_order: int = 3,
         width: list = [1, 2, 1],
-        grid: int = [3],
+        grid: int | list = [3],
         opt: str = "LBFGS",
         n_iter: int = 100,
         lr: float = 1.0,
         device: str = DEVICE,
     ):
-        g = grid.pop(0)
+        # grid is one size, or a list of sizes to refine through in order
+        grids = [grid] if isinstance(grid, int) else list(grid)
         kan.KAN.__init__(
-            self, width=width, grid=g, k=spline_order, seed=1, device=device
+            self, width=width, grid=grids[0], k=spline_order, seed=1, device=device
         )
         model.Model.__init__(self, x_mat=x_mat, y_vec=y_vec)
-        x_mat_tensor = torch.from_numpy(x_mat)
-        y_vec_tensor = torch.from_numpy(y_vec)
-        x_mat_test_tensor = torch.from_numpy(x_mat_test)
-        y_vec_test_tensor = torch.from_numpy(y_vec_test)
+        # kan.KAN runs in float32 and doesn't cast its inputs (see KANModel)
+        x_mat_tensor = torch.from_numpy(x_mat.astype(np.float32))
+        y_vec_tensor = torch.from_numpy(y_vec.astype(np.float32))
+        x_mat_test_tensor = torch.from_numpy(x_mat_test.astype(np.float32))
+        y_vec_test_tensor = torch.from_numpy(y_vec_test.astype(np.float32))
         self.dataset = KANModel.create_dataset_from_test_train_data(
             x_mat_tensor,
             y_vec_tensor,
@@ -308,7 +311,7 @@ class CompositeKANModel(kan.KAN, model.Model):
         self.train_losses += results["train_loss"]
         self.test_losses += results["test_loss"]
 
-        for g in grid:
+        for g in grids[1:]:
             self.refine_model(g)
             results = self.fit(
                 dataset=self.dataset,
@@ -335,16 +338,17 @@ class CompositeKANModel(kan.KAN, model.Model):
         # swallowed torch.linalg.lstsq rank-deficiency error, so do this step
         # on CPU and restore the model to its working device afterward.
         target_device = self.device
+        # refine() builds a plain KAN, so the __dict__ update below replaces
+        # _modules and drops _linear_nn. Keep the trained layer and reattach it
+        # so the linear shortcut carries across grid stages.
+        linear_nn = self._linear_nn
         self.to("cpu")
         if self.cache_data is not None:
             self.cache_data = self.cache_data.to("cpu")
         refined = self.refine(new_grid)
         self.__dict__.update(refined.__dict__)
+        self._linear_nn = linear_nn
         self.to(target_device)
-        # Generate a linear neural network to create a shortcut for model training
-        self._linear_nn = torch.nn.Linear(
-            in_features=self.input_size, out_features=self.output_size, bias=True
-        ).to(target_device)
         return self
 
     def evaluate(self, x_in, loud=False):
@@ -408,13 +412,13 @@ class MFKANModel(mf_model.MFModel):
         y_hf_test: np.ndarray[float],
         spline_order_lf: int = 3,
         width_lf: list = [1, 2, 1],
-        grid_lf: int = [3],
+        grid_lf: int | list = [3],
         opt_lf: str = "LBFGS",
         n_iter_lf: int = 100,
         lr_lf: float = 1.0,
         spline_order_mf: int = 3,
         width_mf: list = [1, 2, 1],
-        grid_mf: int = [3],
+        grid_mf: int | list = [3],
         opt_mf: str = "LBFGS",
         n_iter_mf: int = 100,
         lr_mf: float = 1.0,

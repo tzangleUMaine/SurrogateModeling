@@ -78,15 +78,21 @@ def generate_kriging_model_comparisons(
     sample_high=105,
     step_size=5,
     seeds=5,
-    points=[],
-    model_error=[],
-    training_time=[],
-    evaluation_time=[],
+    points=None,
+    model_error=None,
+    training_time=None,
+    evaluation_time=None,
     nugget=1e-5,
     scale_input=True,
     bounds=None,
     output_file="kriging_model_comparison_output.csv",
 ):
+    # Start fresh lists per call; pass existing lists to extend them instead
+    points = [] if points is None else points
+    model_error = [] if model_error is None else model_error
+    training_time = [] if training_time is None else training_time
+    evaluation_time = [] if evaluation_time is None else evaluation_time
+
     # Write a header only if the file doesn't already exist, so calling this
     # again (e.g. to add more seeds/points) appends new rows instead of
     # wiping prior results -- each run below appends its own row immediately,

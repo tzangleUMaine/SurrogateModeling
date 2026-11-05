@@ -2,3 +2,17 @@
 [build-system]
 requires = ["setuptools"]
 build-backend = "setuptools.build_meta"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+# The package's modules import each other bare (`import model`), so both roots
+# are needed for the tests to run without the legacy editable install.
+pythonpath = [".", "SurrogateModels"]
+markers = [
+    "slow: trains models to convergence and checks accuracy (deselect with -m 'not slow')",
+]
+filterwarnings = [
+    "ignore:You are using `torch.load`:FutureWarning",
+    # pykan computes std() over the batch, which warns on single-point input
+    'ignore:std\(\):UserWarning',
+]

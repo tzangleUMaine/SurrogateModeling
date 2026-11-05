@@ -4,7 +4,7 @@ import model
 
 
 class MFModel(model.Model):
-    def __init__(self, x_lf, y_lf, x_hf, y_hf, bounds):
+    def __init__(self, x_lf, y_lf, x_hf, y_hf, bounds=None):
         # Expects input values of:
         # x_mat: matrix of explanatory variables
         # y_vec: vector of response variables

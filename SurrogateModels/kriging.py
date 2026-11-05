@@ -41,7 +41,9 @@ class Kriging(model.Model):
         # fun = lambda vars: (-self.calculate_mle(vars[: self.d], vars[self.d :]))
         assume_gaussian = True
         if assume_gaussian:
-            x0 = np.zeros(self.d, dtype=float)
+            # Start at log10(theta) = 1, matching DiffKriging. From 0, L-BFGS-B
+            # can stop at the lower bound and return a nearly flat surface.
+            x0 = np.ones(self.d, dtype=float)
             bounds = [(-3, 3)] * self.d
 
             logger = MinimizeLogger(self._objective_function2)

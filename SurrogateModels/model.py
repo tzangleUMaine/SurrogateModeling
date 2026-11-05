@@ -305,7 +305,7 @@ class DataTransform:
     def __init__(self, x=None, bounds=None, method="bounded"):
         self.method = method
         if method == "bounded":
-            if bounds == None:
+            if bounds is None:
                 self.bounds = np.vstack((np.min(x, axis=0), np.max(x, axis=0)))
                 if x.shape[1] == 1:
                     self.bounds = self.bounds.T

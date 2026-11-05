@@ -129,10 +129,7 @@ def generate_kan_model(
         y_vec_test=y_test,
         spline_order=spline_order,
         width=width,
-        # KANModel.__init__ pops from `grid` as it refines through each
-        # entry, so hand it a copy -- otherwise a shared default list would
-        # be left empty after the first call.
-        grid=list(grid),
+        grid=grid,
         opt=opt,
         n_iter=n_iter,
         lr=lr,
@@ -165,10 +162,10 @@ def generate_kan_model_comparisons(
     sample_high=105,
     step_size=5,
     seeds=5,
-    points=[],
-    model_error=[],
-    training_time=[],
-    evaluation_time=[],
+    points=None,
+    model_error=None,
+    training_time=None,
+    evaluation_time=None,
     width=[1, 2, 1],
     grid=[3],
     spline_order=3,
@@ -183,6 +180,12 @@ def generate_kan_model_comparisons(
     lamb=0.0,
     output_file="kan_model_comparison_output.csv",
 ):
+    # Start fresh lists per call; pass existing lists to extend them instead
+    points = [] if points is None else points
+    model_error = [] if model_error is None else model_error
+    training_time = [] if training_time is None else training_time
+    evaluation_time = [] if evaluation_time is None else evaluation_time
+
     # Write a header only if the file doesn't already exist, so calling this
     # again (e.g. to add more seeds/points, or after a previous call already
     # populated the file) appends new rows instead of wiping prior results --
@@ -212,7 +215,7 @@ def generate_kan_model_comparisons(
                 y_vec_test=y_test,
                 spline_order=spline_order,
                 width=width,
-                grid=list(grid),
+                grid=grid,
                 opt=opt,
                 n_iter=n_iter,
                 lr=lr,

@@ -37,7 +37,6 @@ class MLPNetwork(torch.nn.Module, model.Model):
         weight_file="network_weights",
         load_weights=False,
         write_weights=False,
-        train=True,
         scale_input=False,
         scale_output=False,
         y_scale_method="standard",
@@ -117,7 +116,7 @@ class MLPNetwork(torch.nn.Module, model.Model):
         if load_weights:
             self.load_state_dict(torch.load(weight_file))
         else:
-            self.training_error, self.testing_error = self.train()
+            self.training_error, self.testing_error = self.fit()
 
         if write_weights:
             torch.save(self.state_dict(), weight_file)
@@ -167,7 +166,7 @@ class MLPNetwork(torch.nn.Module, model.Model):
         return np.sqrt(test_error)
 
     # Train uses backpropogation to solve for the model parameters
-    def train(self, eval_interval=10):
+    def fit(self, eval_interval=10):
         train_error_history = []
         test_error_history = []
         train_error = test_error = None
@@ -237,19 +236,44 @@ class CompositeNN(torch.nn.Module, mf_model.MFModel):
         epochs=1000,
         learning_rate=0.001,
         weight_decay=0.001,
-        batch_size=100,
+        batch_size=10000,
         train=True,
+        scale_input=False,
+        scale_output=False,
+        x_scale_method="bounded",
+        y_scale_method="standard",
+        bounds=None,
     ):
         torch.nn.Module.__init__(self)
-        model.Model.__init__(self, X, y)
+        # Model.__init__ fits x_scale/y_scale on the training data and scales
+        # self.x/self.y in place when requested
+        model.Model.__init__(
+            self,
+            X,
+            y,
+            bounds,
+            x_scale_method=x_scale_method,
+            y_scale_method=y_scale_method,
+            scale_input=scale_input,
+            scale_output=scale_output,
+        )
 
         self.device = torch.device(DEVICE)
+        self.scale_input = scale_input
+        self.scale_output = scale_output
+
+        # Apply the same fitted transforms to the test data so train/test
+        # stay on the same scale
+        if self.scale_input:
+            X_test = self.x_scale.transform(X_test)
+        if self.scale_output:
+            y_test = self.y_scale.transform(y_test)
 
         # Keep the train/test data as whole tensors on the target device and
         # batch by indexing them directly -- see MLPNetwork for why a
         # DataLoader is avoided here.
-        self.X_train = torch.as_tensor(X, dtype=torch.float32, device=self.device)
-        self.y_train = torch.as_tensor(y, dtype=torch.float32, device=self.device)
+        self.X_train = torch.as_tensor(self.x, dtype=torch.float32, device=self.device)
+        self.y_train = torch.as_tensor(self.y, dtype=torch.float32, device=self.device)
         self.X_test = torch.as_tensor(X_test, dtype=torch.float32, device=self.device)
         self.y_test = torch.as_tensor(y_test, dtype=torch.float32, device=self.device)
 
@@ -306,7 +330,7 @@ class CompositeNN(torch.nn.Module, mf_model.MFModel):
             )
 
             # Run training on network
-            self.training_error, self.testing_error = self.train()
+            self.training_error, self.testing_error = self.fit()
 
     # Simple function to create csv files of the training inputs to check distributions
     def dataloader_write(self, file_name):
@@ -324,10 +348,17 @@ class CompositeNN(torch.nn.Module, mf_model.MFModel):
     # Public boundary method: numpy (or tensor) in, numpy out -- matches the
     # evaluate() contract used by model.Model and every other model class.
     def evaluate(self, x_in):
+        if self.scale_input:
+            x_in = self.x_scale.transform(x_in)
+
         x_tensor = torch.as_tensor(x_in, dtype=torch.float32, device=self.device)
         with torch.no_grad():
             y_hat = self.forward(x_tensor)
-        return y_hat.detach().cpu().numpy()
+        y_hat = y_hat.detach().cpu().numpy()
+
+        if self.scale_output:
+            y_hat = self.y_scale.inverse(y_hat)
+        return y_hat
 
     # Calculates the training error using the given loss function
     def training_accuracy(self):
@@ -349,7 +380,7 @@ class CompositeNN(torch.nn.Module, mf_model.MFModel):
             m.bias.data.fill_(0.01)
 
     # Train uses backpropogation to solve for the model parameters
-    def train(self, eval_interval=10):
+    def fit(self, eval_interval=10):
         train_error_history = []
         test_error_history = []
         train_error = test_error = None
@@ -439,31 +470,46 @@ class MultiFidelityNN(torch.nn.Module, mf_model.MFModel):
         y_hf,
         X_hf_test,
         y_hf_test,
-        lf_nn_dim,
-        hf_nl_nn_dim,
+        lf_nn_dim=None,
+        hf_nl_nn_dim=[10, 8],
         epochs_lf=500,
         epochs_mf=1000,
         lr_lf=0.005,
         wd_lf=0.000001,
         lr_mf=0.001,
         wd_mf=0.001,
+        bounds=None,
+        scale_input=False,
+        scale_output=False,
+        lf_model: model.Model = None,
     ):
+        if lf_model is None and lf_nn_dim is None:
+            raise ValueError("MultiFidelityNN needs either lf_nn_dim or lf_model")
+
         # Populate the multi-fidelity model data
         torch.nn.Module.__init__(self)
-        mf_model.MFModel.__init__(self, X_lf, y_lf, X_hf, y_hf)
+        mf_model.MFModel.__init__(self, X_lf, y_lf, X_hf, y_hf, bounds)
 
-        # Generate a NN model of the lf model data
-        self.low_fidelity_nn = MLPNetwork(
-            X_lf,
-            y_lf,
-            X_test=X_lf_test,
-            y_test=y_lf_test,
-            hidden_layer_size=lf_nn_dim,
-            activation=torch.nn.Tanh(),
-            epochs=epochs_lf,
-            learning_rate=lr_lf,
-            train=True,
-        )
+        # Use the trained lf model if one was given. Only its evaluate() is
+        # called, which works in original units, so it needs no matching scaling
+        if lf_model is not None:
+            self.low_fidelity_nn = lf_model
+        else:
+            # Generate a NN model of the lf model data
+            self.low_fidelity_nn = MLPNetwork(
+                X_lf,
+                y_lf,
+                X_test=X_lf_test,
+                y_test=y_lf_test,
+                hidden_layer_size=lf_nn_dim,
+                activation=torch.nn.Tanh(),
+                epochs=epochs_lf,
+                learning_rate=lr_lf,
+                weight_decay=wd_lf,
+                scale_input=scale_input,
+                scale_output=scale_output,
+                bounds=bounds,
+            )
 
         # Evaluate the LF KAN model at the HF locations
         y_lf_at_hf = self.low_fidelity_nn.evaluate(self.x)
@@ -472,6 +518,14 @@ class MultiFidelityNN(torch.nn.Module, mf_model.MFModel):
         # Generate the MF KAN model by combining the evaluated data set with the HF data
         x_mf = np.hstack((self.x, y_lf_at_hf))
         x_mf_test = np.hstack((X_hf_test, y_lf_at_hf_test))
+
+        # The composite NN's inputs are [x, y_lf]: scale x by the known domain
+        # bounds and the y_lf column by the LF training data's range, which
+        # covers the domain far better than the few HF locations do
+        if bounds is not None:
+            mf_bounds = list(bounds) + [[float(np.min(y_lf)), float(np.max(y_lf))]]
+        else:
+            mf_bounds = None
 
         # Train composite NN
         self.high_fidelity_nn = CompositeNN(
@@ -485,6 +539,9 @@ class MultiFidelityNN(torch.nn.Module, mf_model.MFModel):
             weight_decay=wd_mf,
             activation_nl=torch.nn.Tanh(),
             train=True,
+            scale_input=scale_input,
+            scale_output=scale_output,
+            bounds=mf_bounds,
         )
 
     def evaluate(self, x):
@@ -547,7 +604,7 @@ def TestFunctionMLP():
         weight_decay=0,
         loss=loss,
     )
-    # error_history = lf_model.train()
+    # error_history = lf_model.fit()
 
     # Plot the results
     lf_model.plot_data("LF Model", label="Data")
