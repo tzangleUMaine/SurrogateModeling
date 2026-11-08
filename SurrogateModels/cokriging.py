@@ -1,5 +1,6 @@
 import numpy as np
 import matplotlib.pyplot as plt
+import scipy.linalg
 import scipy.optimize
 import mf_model
 import kriging
@@ -17,7 +18,15 @@ class CoKriging(mf_model.MFModel):
         scale_input=False,
         bounds=None,
         lf_kriging_model: kriging.Kriging = None,
+        mean: str = "separate",
     ):
+        # "separate" gives each fidelity its own constant mean, so
+        # E[y_lf] = mu_c and E[y_hf] = rho * mu_c + mu_d, as in Kennedy and
+        # O'Hagan. "shared" uses one constant mean for both, as in Forrester's
+        # formulation, which assumes the two fidelities sit at the same level.
+        if mean not in ("separate", "shared"):
+            raise ValueError(f"mean must be 'separate' or 'shared', not {mean!r}")
+        self.mean_type = mean
 
         t0 = time.perf_counter()
         # Init the multifidelity model data
@@ -66,18 +75,28 @@ class CoKriging(mf_model.MFModel):
         except np.linalg.LinAlgError:
             return -1e20  # invalid region for optimizer
 
-        ones = np.ones((self.n, 1))
+        # Mean basis for the stacked [y_lf; y_hf], and its value for an HF prediction
+        rho = self.kriging_diff.scale_factor
+        if self.mean_type == "shared":
+            F = np.ones((self.n, 1))
+            f_hf = np.array([[1.0]])
+        else:
+            F = np.zeros((self.n, 2))
+            F[: self.n_lf, 0] = 1
+            F[self.n_lf :, 0] = rho
+            F[self.n_lf :, 1] = 1
+            f_hf = np.array([[rho, 1.0]])
 
-        # solve Ψ⁻¹y
-        alpha = np.linalg.solve(L.T, np.linalg.solve(L, self.yck))
+        # Generalized least squares estimate of the mean coefficients
+        Ci_F = scipy.linalg.cho_solve((L, True), F)
+        self.mean_coefficients = np.linalg.solve(F.T @ Ci_F, Ci_F.T @ self.yck)
 
-        # solve Ψ⁻¹1
-        beta = np.linalg.solve(L.T, np.linalg.solve(L, ones))
-
-        mu = (ones.T @ alpha) / (ones.T @ beta)
-        r = self.yck - ones * mu
-        b = np.linalg.solve(L.T, np.linalg.solve(L, r))
+        r = self.yck - F @ self.mean_coefficients
+        b = scipy.linalg.cho_solve((L, True), r)
         sigma2 = (r.T @ b) / self.n
+
+        # The mean of the HF prediction
+        mu = f_hf @ self.mean_coefficients
 
         return C, mu, sigma2, b
 

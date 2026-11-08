@@ -1,5 +1,9 @@
 from __future__ import annotations
 
+import contextlib
+import functools
+import random
+
 import kan
 from torch.utils.data import DataLoader
 import torch
@@ -58,7 +62,34 @@ def _lstsq_with_cpu_fallback(*args, **kwargs):
 torch.linalg.lstsq = _lstsq_with_cpu_fallback
 
 
+# kan.KAN.__init__ (and refine()) reseed the global torch, numpy and random
+# generators, so every build would leave them in the same state and any
+# unseeded draws afterwards would repeat. Building and training run under the
+# model's own seed, then the caller's generator state comes back.
+@contextlib.contextmanager
+def _global_rng_restored():
+    np_state = np.random.get_state()
+    py_state = random.getstate()
+    devices = list(range(torch.cuda.device_count())) if torch.cuda.is_available() else []
+    try:
+        with torch.random.fork_rng(devices=devices):
+            yield
+    finally:
+        np.random.set_state(np_state)
+        random.setstate(py_state)
+
+
+def _keeps_global_rng(init):
+    @functools.wraps(init)
+    def wrapper(*args, **kwargs):
+        with _global_rng_restored():
+            init(*args, **kwargs)
+
+    return wrapper
+
+
 class KANModel(kan.KAN, model.Model):
+    @_keeps_global_rng
     def __init__(
         self,
         x_mat: np.ndarray[float],
@@ -66,7 +97,7 @@ class KANModel(kan.KAN, model.Model):
         x_mat_test: np.ndarray[float] = None,
         y_vec_test: np.ndarray[float] = None,
         spline_order: int = 3,
-        width: list = [1, 2, 1],
+        hidden_layers: list = [2],
         grid: int | list = [3],
         opt: str = "LBFGS",
         n_iter: int = 100,
@@ -78,12 +109,20 @@ class KANModel(kan.KAN, model.Model):
         y_scale_method: str = "standard",
         bounds=None,
         lamb: float = 0.0,
+        seed: int = 1,
     ):
         # grid is one size, or a list of sizes to refine through in order
         grids = [grid] if isinstance(grid, int) else list(grid)
 
+        # hidden_layers only holds the hidden sizes: the data sets the input and
+        # output sizes, because pykan silently drops any extra input columns
         kan.KAN.__init__(
-            self, width=width, grid=grids[0], k=spline_order, seed=1, device=device
+            self,
+            width=[x_mat.shape[1], *hidden_layers, y_vec.shape[1]],
+            grid=grids[0],
+            k=spline_order,
+            seed=seed,
+            device=device,
         )
         model.Model.__init__(
             self,
@@ -250,6 +289,7 @@ class KANModel(kan.KAN, model.Model):
 
 
 class CompositeKANModel(kan.KAN, model.Model):
+    @_keeps_global_rng
     def __init__(
         self,
         x_mat: np.ndarray[float],
@@ -257,22 +297,56 @@ class CompositeKANModel(kan.KAN, model.Model):
         x_mat_test: np.ndarray[float] = None,
         y_vec_test: np.ndarray[float] = None,
         spline_order: int = 3,
-        width: list = [1, 2, 1],
+        hidden_layers: list = [2],
         grid: int | list = [3],
         opt: str = "LBFGS",
         n_iter: int = 100,
         lr: float = 1.0,
         device: str = DEVICE,
+        scale_input: bool = False,
+        scale_output: bool = False,
+        x_scale_method: str = "bounded",
+        y_scale_method: str = "standard",
+        bounds=None,
+        seed: int = 1,
+        lamb: float = 0.0,
     ):
         # grid is one size, or a list of sizes to refine through in order
         grids = [grid] if isinstance(grid, int) else list(grid)
+        # hidden_layers only holds the hidden sizes: the data sets the input and
+        # output sizes, because pykan silently drops any extra input columns
         kan.KAN.__init__(
-            self, width=width, grid=grids[0], k=spline_order, seed=1, device=device
+            self,
+            width=[x_mat.shape[1], *hidden_layers, y_vec.shape[1]],
+            grid=grids[0],
+            k=spline_order,
+            seed=seed,
+            device=device,
         )
-        model.Model.__init__(self, x_mat=x_mat, y_vec=y_vec)
+        model.Model.__init__(
+            self,
+            x_mat=x_mat,
+            y_vec=y_vec,
+            bounds=bounds,
+            x_scale_method=x_scale_method,
+            y_scale_method=y_scale_method,
+            scale_input=scale_input,
+            scale_output=scale_output,
+        )
+
+        self.scale_input = scale_input
+        self.scale_output = scale_output
+
+        # self.x / self.y were scaled in place above when requested; apply the
+        # same fitted transforms to the test data (see KANModel)
+        if self.scale_input and x_mat_test is not None:
+            x_mat_test = self.x_scale.transform(x_mat_test)
+        if self.scale_output and y_vec_test is not None:
+            y_vec_test = self.y_scale.transform(y_vec_test)
+
         # kan.KAN runs in float32 and doesn't cast its inputs (see KANModel)
-        x_mat_tensor = torch.from_numpy(x_mat.astype(np.float32))
-        y_vec_tensor = torch.from_numpy(y_vec.astype(np.float32))
+        x_mat_tensor = torch.from_numpy(self.x.astype(np.float32))
+        y_vec_tensor = torch.from_numpy(self.y.astype(np.float32))
         x_mat_test_tensor = torch.from_numpy(x_mat_test.astype(np.float32))
         y_vec_test_tensor = torch.from_numpy(y_vec_test.astype(np.float32))
         self.dataset = KANModel.create_dataset_from_test_train_data(
@@ -306,6 +380,7 @@ class CompositeKANModel(kan.KAN, model.Model):
             opt=opt,
             steps=n_iter,
             lr=lr,
+            lamb=lamb,
         )
 
         self.train_losses += results["train_loss"]
@@ -318,6 +393,7 @@ class CompositeKANModel(kan.KAN, model.Model):
                 opt=opt,
                 steps=n_iter,
                 lr=lr,
+                lamb=lamb,
             )
             self.train_losses += results["train_loss"]
             self.test_losses += results["test_loss"]
@@ -352,10 +428,16 @@ class CompositeKANModel(kan.KAN, model.Model):
         return self
 
     def evaluate(self, x_in, loud=False):
+        if self.scale_input:
+            x_in = self.x_scale.transform(x_in)
         x_tensor = torch.as_tensor(x_in, dtype=torch.float32, device=self.device)
         with torch.no_grad():
             y_hat = self.forward(x_tensor, loud=loud)
-        return y_hat.detach().cpu().numpy()
+        y_hat = y_hat.detach().cpu().numpy()
+
+        if self.scale_output:
+            y_hat = self.y_scale.inverse(y_hat)
+        return y_hat
 
     def plot_fit_error(
         self,
@@ -411,51 +493,75 @@ class MFKANModel(mf_model.MFModel):
         x_hf_test: np.ndarray[float],
         y_hf_test: np.ndarray[float],
         spline_order_lf: int = 3,
-        width_lf: list = [1, 2, 1],
+        hidden_layers_lf: list = [2],
         grid_lf: int | list = [3],
         opt_lf: str = "LBFGS",
         n_iter_lf: int = 100,
         lr_lf: float = 1.0,
+        lamb_lf: float = 0.0,
         spline_order_mf: int = 3,
-        width_mf: list = [1, 2, 1],
+        hidden_layers_mf: list = [2],
         grid_mf: int | list = [3],
         opt_mf: str = "LBFGS",
         n_iter_mf: int = 100,
         lr_mf: float = 1.0,
+        lamb_mf: float = 0.0,
+        scale_input: bool = False,
+        scale_output: bool = False,
+        bounds=None,
+        seed_lf: int = 1,
+        seed_mf: int = 1,
+        lf_model: model.Model = None,
     ):
+        # The composite model has at least two inputs, and sampled bounds only
+        # work for one (see DataTransform)
+        if scale_input and bounds is None:
+            raise ValueError("MFKANModel needs bounds when scale_input is True")
+
         # Init the multifidelity model data
-        mf_model.MFModel.__init__(self, x_lf, y_lf, x_hf, y_hf)
+        mf_model.MFModel.__init__(self, x_lf, y_lf, x_hf, y_hf, bounds)
+        self.scale_input = scale_input
 
-        # Create the LF KAN model using low fidelity data
-        self.lf_kan_model = KANModel(
-            x_mat=self.x_lf,
-            y_vec=self.y_lf,
-            x_mat_test=x_lf_test,
-            y_vec_test=y_lf_test,
-            spline_order=spline_order_lf,
-            width=width_lf,
-            grid=grid_lf,
-            opt=opt_lf,
-            n_iter=n_iter_lf,
-            lr=lr_lf,
-        )
+        # Use the trained lf model if one was given. Only its evaluate() is
+        # called, which works in original units, so it needs no matching scaling
+        if lf_model is not None:
+            self.lf_kan_model = lf_model
+        else:
+            # Create the LF KAN model using low fidelity data
+            self.lf_kan_model = KANModel(
+                x_mat=self.x_lf,
+                y_vec=self.y_lf,
+                x_mat_test=x_lf_test,
+                y_vec_test=y_lf_test,
+                spline_order=spline_order_lf,
+                hidden_layers=hidden_layers_lf,
+                grid=grid_lf,
+                opt=opt_lf,
+                n_iter=n_iter_lf,
+                lr=lr_lf,
+                scale_input=scale_input,
+                scale_output=scale_output,
+                bounds=bounds,
+                seed=seed_lf,
+                lamb=lamb_lf,
+            )
 
-        # Evaluate the LF KAN model at the HF locations
+        # The range used to scale the y_lf column when the composite doesn't
         y_lf_at_hf = self.lf_kan_model.evaluate(self.x)
         self.lf_at_hf_min = y_lf_at_hf.min()
         self.lf_at_hf_max = y_lf_at_hf.max()
-        y_lf_at_hf = data_handler.scale_array(
-            y_lf_at_hf, self.lf_at_hf_min, self.lf_at_hf_max
-        )
-
-        y_lf_at_hf_test = self.lf_kan_model.evaluate(x_hf_test)
-        y_lf_at_hf_test = data_handler.scale_array(
-            y_lf_at_hf_test, self.lf_at_hf_min, self.lf_at_hf_max
-        )
 
         # Generate the MF KAN model by combining the evaluated data set with the HF data
-        x_mf = np.hstack((self.x, y_lf_at_hf))
-        x_mf_test = np.hstack((x_hf_test, y_lf_at_hf_test))
+        x_mf = self._composite_input(self.x)
+        x_mf_test = self._composite_input(x_hf_test)
+
+        # The composite's inputs are [x, y_lf]: scale x by the known domain bounds
+        # and the y_lf column by the LF training data's range, which covers the
+        # domain far better than the few HF locations do
+        if scale_input:
+            mf_bounds = list(bounds) + [[float(np.min(y_lf)), float(np.max(y_lf))]]
+        else:
+            mf_bounds = None
 
         self.mf_kan_model = CompositeKANModel(
             x_mat=x_mf,
@@ -463,28 +569,37 @@ class MFKANModel(mf_model.MFModel):
             x_mat_test=x_mf_test,
             y_vec_test=y_hf_test,
             spline_order=spline_order_mf,
-            width=width_mf,
+            hidden_layers=hidden_layers_mf,
             grid=grid_mf,
             opt=opt_mf,
             n_iter=n_iter_mf,
             lr=lr_mf,
+            scale_input=scale_input,
+            scale_output=scale_output,
+            bounds=mf_bounds,
+            seed=seed_mf,
+            lamb=lamb_mf,
         )
+
+    def _composite_input(self, x):
+        # Evaluate the LF KAN model at the given locations
+        y_lf_at_x = self.lf_kan_model.evaluate(x).reshape(-1, 1)
+
+        # With scale_input the composite model scales this column itself
+        if not self.scale_input:
+            y_lf_at_x = data_handler.scale_array(
+                y_lf_at_x, self.lf_at_hf_min, self.lf_at_hf_max
+            )
+
+        # Generate the MF input by combining x and y_lf_at_x
+        return np.hstack((x, y_lf_at_x))
 
     def evaluate(self, x, loud=False):
         return self.forward(x, loud=loud)
 
     def forward(self, x, loud=False):
-        # Evaluate the LF KAN model at the HF locations
-        y_lf_at_x = self.lf_kan_model.evaluate(x).reshape(-1, 1)
-        y_lf_at_x = data_handler.scale_array(
-            y_lf_at_x, self.lf_at_hf_min, self.lf_at_hf_max
-        )
-
-        # Generate the MF input by combining x and y_lf_at_x
-        x_mf = np.hstack((x, y_lf_at_x))
-
         # Evaluate the MF KAN model
-        return self.mf_kan_model.evaluate(x_mf, loud=loud)
+        return self.mf_kan_model.evaluate(self._composite_input(x), loud=loud)
 
     def plot_lf_fit_error(self):
         self.lf_kan_model.plot_fit_error()

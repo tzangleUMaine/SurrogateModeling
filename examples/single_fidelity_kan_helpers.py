@@ -104,7 +104,7 @@ def generate_kan_model(
     seed,
     X_test,
     y_test,
-    width=[1, 2, 1],
+    hidden_layers=[2],
     grid=[3],
     spline_order=3,
     opt="LBFGS",
@@ -128,7 +128,7 @@ def generate_kan_model(
         x_mat_test=X_test,
         y_vec_test=y_test,
         spline_order=spline_order,
-        width=width,
+        hidden_layers=hidden_layers,
         grid=grid,
         opt=opt,
         n_iter=n_iter,
@@ -141,6 +141,7 @@ def generate_kan_model(
         # rather than the (possibly unrepresentative) sampled min/max.
         bounds=bounds if bounds is not None else func.bounds,
         lamb=lamb,
+        seed=seed,
     )
     model_training_time = time.perf_counter() - t0
 
@@ -166,7 +167,7 @@ def generate_kan_model_comparisons(
     model_error=None,
     training_time=None,
     evaluation_time=None,
-    width=[1, 2, 1],
+    hidden_layers=[2],
     grid=[3],
     spline_order=3,
     opt="LBFGS",
@@ -214,7 +215,7 @@ def generate_kan_model_comparisons(
                 x_mat_test=X_test,
                 y_vec_test=y_test,
                 spline_order=spline_order,
-                width=width,
+                hidden_layers=hidden_layers,
                 grid=grid,
                 opt=opt,
                 n_iter=n_iter,
@@ -225,6 +226,7 @@ def generate_kan_model_comparisons(
                 y_scale_method=y_scale_method,
                 bounds=bounds if bounds is not None else func.bounds,
                 lamb=lamb,
+                seed=seed,
             )
 
             training_time.append(time.perf_counter() - t0)

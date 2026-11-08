@@ -6,6 +6,9 @@ import scipy.linalg
 import typing
 import time
 
+# Starting values of log10(theta) for the hyperparameter search
+THETA_STARTS = (1.0, 0.0, -1.0, -2.0)
+
 
 class Kriging(model.Model):
     def __init__(
@@ -41,16 +44,20 @@ class Kriging(model.Model):
         # fun = lambda vars: (-self.calculate_mle(vars[: self.d], vars[self.d :]))
         assume_gaussian = True
         if assume_gaussian:
-            # Start at log10(theta) = 1, matching DiffKriging. From 0, L-BFGS-B
-            # can stop at the lower bound and return a nearly flat surface.
-            x0 = np.ones(self.d, dtype=float)
             bounds = [(-3, 3)] * self.d
 
-            logger = MinimizeLogger(self._objective_function2)
-            res, history = logger.run(x0, method="L-BFGS-B", bounds=bounds)
-            self.iter = logger.iter
+            # The likelihood has several local optima, and no single start
+            # finds the best one on every benchmark, so keep the best of several
+            best_res = None
+            for start in THETA_STARTS:
+                x0 = np.full(self.d, start, dtype=float)
+                logger = MinimizeLogger(self._objective_function2)
+                res, history = logger.run(x0, method="L-BFGS-B", bounds=bounds)
+                if best_res is None or res.fun < best_res.fun:
+                    best_res = res
+                    self.iter = logger.iter
 
-            theta_opt = 10 ** res.x[: self.d]
+            theta_opt = 10 ** best_res.x[: self.d]
             p_opt = np.ones(self.d, dtype=float) * 2.0
         else:
             x0 = np.zeros(self.d * 2, dtype=float)
@@ -95,14 +102,14 @@ class Kriging(model.Model):
         ones = np.ones((self.n, 1))
 
         # solve Ψ⁻¹y
-        alpha = np.linalg.solve(L.T, np.linalg.solve(L, self.y))
+        alpha = scipy.linalg.cho_solve((L, True), self.y)
 
         # solve Ψ⁻¹1
-        beta = np.linalg.solve(L.T, np.linalg.solve(L, ones))
+        beta = scipy.linalg.cho_solve((L, True), ones)
 
         mu = (ones.T @ alpha) / (ones.T @ beta)
         r = self.y - ones * mu
-        gamma = np.linalg.solve(L.T, np.linalg.solve(L, r))
+        gamma = scipy.linalg.cho_solve((L, True), r)
         sigma2 = (r.T @ gamma) / self.n
         logdet = 2 * np.sum(np.log(np.diag(L)))
 
@@ -114,23 +121,20 @@ class Kriging(model.Model):
         psi = self._calculate_correlation(theta, p, self.diffs)
         psi += np.eye(self.n) * self.nugget
 
-        try:
-            L = np.linalg.cholesky(psi)
-        except np.linalg.LinAlgError:
-            print("Error in Cholesky Decomp")
-            return -1e20  # invalid region for optimizer
+        # A failure here means no start found a valid theta
+        L = np.linalg.cholesky(psi)
 
         ones = np.ones((self.n, 1))
 
         # solve Ψ⁻¹y
-        alpha = np.linalg.solve(L.T, np.linalg.solve(L, self.y))
+        alpha = scipy.linalg.cho_solve((L, True), self.y)
 
         # solve Ψ⁻¹1
-        beta = np.linalg.solve(L.T, np.linalg.solve(L, ones))
+        beta = scipy.linalg.cho_solve((L, True), ones)
 
         mu = (ones.T @ alpha) / (ones.T @ beta)
         r = self.y - ones * mu
-        b = np.linalg.solve(L.T, np.linalg.solve(L, r))
+        b = scipy.linalg.cho_solve((L, True), r)
         sigma2 = (r.T @ b) / self.n
 
         return mu, sigma2, b, psi
@@ -166,6 +170,9 @@ class DiffKriging(Kriging):
     def __init__(self, x_mat, yh, yl, nugget=1e-7):
 
         self.x = x_mat
+
+        # Skips Model.__init__, so x is never scaled and evaluate() takes it as is
+        self.scale_input = False
 
         # Store the size of the inputs
         self.n, self.d = np.shape(self.x)

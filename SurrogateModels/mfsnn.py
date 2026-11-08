@@ -243,6 +243,7 @@ class CompositeNN(torch.nn.Module, mf_model.MFModel):
         x_scale_method="bounded",
         y_scale_method="standard",
         bounds=None,
+        solve_linear=False,
     ):
         torch.nn.Module.__init__(self)
         # Model.__init__ fits x_scale/y_scale on the training data and scales
@@ -321,12 +322,24 @@ class CompositeNN(torch.nn.Module, mf_model.MFModel):
         # Move the whole module to its target device once, up front
         self.to(self.device)
 
+        if solve_linear:
+            self.solve_linear_path()
+
         # Check whether the network is just being setup or if traing is specified
         if train:
             # Set the optimizer and parameters
             # self.optimizer = t.optim.LBFGS(self.parameters(), lr = learning_rate, max_iter=40)
+            # Only the nonlinear path is decayed: the linear path carries the
+            # correlation with the LF model and shouldn't be pulled toward zero
             self.optimizer = torch.optim.AdamW(
-                self.parameters(), lr=learning_rate, weight_decay=weight_decay
+                [
+                    {
+                        "params": self._nl_layers.parameters(),
+                        "weight_decay": weight_decay,
+                    },
+                    {"params": self._linear_layers.parameters(), "weight_decay": 0.0},
+                ],
+                lr=learning_rate,
             )
 
             # Run training on network
@@ -373,6 +386,40 @@ class CompositeNN(torch.nn.Module, mf_model.MFModel):
 
         return np.sqrt(test_error)
 
+    # Sets the linear path to the least-squares fit of the training data, so the
+    # nonlinear path starts from the remainder. The path stays trainable.
+    def solve_linear_path(self):
+        x = self.X_train.cpu().numpy()
+        y = self.y_train.cpu().numpy()
+        design = np.hstack((x, np.ones((x.shape[0], 1), dtype=x.dtype)))
+        solution = np.linalg.lstsq(design, y, rcond=None)[0]
+
+        with torch.no_grad():
+            self._linear_layers.weight.copy_(torch.as_tensor(solution[:-1].T))
+            self._linear_layers.bias.copy_(torch.as_tensor(solution[-1]))
+
+    # Measures how the test predictions split between the two paths. The shares
+    # are each path's covariance with the prediction over the prediction's
+    # variance, so they sum to 1, though either can fall outside [0, 1] when the
+    # paths oppose each other. linear_rmse holds the nonlinear path at its mean.
+    def path_usage(self):
+        with torch.no_grad():
+            y_linear = self._linear_layers(self.X_test)
+            y_nl = self._nl_layers(self.X_test)
+            y_hat = y_linear + y_nl
+            centered = y_hat - y_hat.mean()
+            variance = (centered**2).mean()
+            linear_share = ((y_linear - y_linear.mean()) * centered).mean() / variance
+            nl_share = ((y_nl - y_nl.mean()) * centered).mean() / variance
+            linear_error = self.loss(y_linear + y_nl.mean(), self.y_test)
+
+        return {
+            "linear_share": linear_share.item(),
+            "nl_share": nl_share.item(),
+            "linear_rmse": np.sqrt(linear_error.item()),
+            "linear_weights": self._linear_layers.weight.detach().cpu().numpy().ravel().copy(),
+        }
+
     # Helper function to initialize weights
     def init_weights(self, m):
         if isinstance(m, torch.nn.Linear):
@@ -383,6 +430,7 @@ class CompositeNN(torch.nn.Module, mf_model.MFModel):
     def fit(self, eval_interval=10):
         train_error_history = []
         test_error_history = []
+        self.path_history = []
         train_error = test_error = None
         n = self.X_train.shape[0]
         for t in range(self.epochs):
@@ -410,6 +458,7 @@ class CompositeNN(torch.nn.Module, mf_model.MFModel):
             if t % eval_interval == 0 or t == self.epochs - 1:
                 train_error = self.training_accuracy()
                 test_error = self.testing_accuracy()
+                self.path_history.append({"epoch": t, **self.path_usage()})
                 if t % self.report_steps == 0:
                     print(f"----Progress Update----")
                     print(
@@ -482,6 +531,7 @@ class MultiFidelityNN(torch.nn.Module, mf_model.MFModel):
         scale_input=False,
         scale_output=False,
         lf_model: model.Model = None,
+        solve_linear=False,
     ):
         if lf_model is None and lf_nn_dim is None:
             raise ValueError("MultiFidelityNN needs either lf_nn_dim or lf_model")
@@ -542,6 +592,7 @@ class MultiFidelityNN(torch.nn.Module, mf_model.MFModel):
             scale_input=scale_input,
             scale_output=scale_output,
             bounds=mf_bounds,
+            solve_linear=solve_linear,
         )
 
     def evaluate(self, x):
@@ -556,6 +607,186 @@ class MultiFidelityNN(torch.nn.Module, mf_model.MFModel):
 
         # Evaluate the MF KAN model
         return self.high_fidelity_nn.evaluate(x_mf)
+
+
+# Multifidelity Neural Network trained as in Meng and Karniadakis 2020
+# Unlike MultiFidelityNN, all networks are trained at once on one loss (Eq. 6):
+#   MSE_yL + MSE_yH + l2_rate * sum(beta^2)
+# where beta is every weight in the LF and nonlinear networks plus alpha, and the
+# outputs are combined as y_H = alpha * F_l + (1 - alpha) * F_nl (Eq. 5).
+# The PDE term and the LF gradient term of the paper's loss are left out, because
+# there is no PDE here and the benchmarks provide no gradient data.
+# One epoch is one optimizer step, which is up to 20 iterations with L-BFGS.
+class JointMultiFidelityNN(torch.nn.Module, mf_model.MFModel):
+    def __init__(
+        self,
+        X_lf,
+        y_lf,
+        X_lf_test,
+        y_lf_test,
+        X_hf,
+        y_hf,
+        X_hf_test,
+        y_hf_test,
+        lf_nn_dim=[20, 20],
+        hf_nl_nn_dim=[10, 10],
+        epochs=1000,
+        learning_rate=0.001,
+        l2_rate=0.01,
+        optimizer="lbfgs",
+        bounds=None,
+        scale_input=False,
+        scale_output=False,
+    ):
+        # Populate the multi-fidelity model data
+        torch.nn.Module.__init__(self)
+        mf_model.MFModel.__init__(self, X_lf, y_lf, X_hf, y_hf, bounds)
+
+        self.device = torch.device(DEVICE)
+        self.scale_input = scale_input
+        self.scale_output = scale_output
+        self.epochs = epochs
+        self.l2_rate = l2_rate
+        self.loss = torch.nn.MSELoss()
+
+        # Zero epochs leaves the LF network untrained, so it holds the scaled
+        # LF data and network layers for the joint training below
+        self.low_fidelity_nn = MLPNetwork(
+            X_lf,
+            y_lf,
+            X_test=X_lf_test,
+            y_test=y_lf_test,
+            hidden_layer_size=lf_nn_dim,
+            activation=torch.nn.Tanh(),
+            epochs=0,
+            scale_input=scale_input,
+            scale_output=scale_output,
+            bounds=bounds,
+        )
+        self.low_fidelity_nn.apply(self.low_fidelity_nn.init_weights)
+
+        # The composite inputs are [x, y_lf] with both already scaled by the LF
+        # network, so CompositeNN does no input scaling of its own. The y_lf
+        # column changes during training and is filled in by forward(), which
+        # leaves zeros here as a placeholder that only sets the input size
+        x_mf = np.hstack((self._scale_x(X_hf), np.zeros((X_hf.shape[0], 1))))
+        x_mf_test = np.hstack(
+            (self._scale_x(X_hf_test), np.zeros((X_hf_test.shape[0], 1)))
+        )
+        self.high_fidelity_nn = CompositeNN(
+            x_mf,
+            y_hf,
+            X_test=x_mf_test,
+            y_test=y_hf_test,
+            layers_nl=hf_nl_nn_dim,
+            activation_nl=torch.nn.Tanh(),
+            train=False,
+            scale_output=scale_output,
+        )
+
+        # Sigmoid keeps alpha in [0, 1], starting from 0.5
+        self.alpha_raw = torch.nn.Parameter(torch.zeros((), device=self.device))
+
+        if optimizer == "lbfgs":
+            self.optimizer = torch.optim.LBFGS(
+                self.parameters(), line_search_fn="strong_wolfe"
+            )
+        elif optimizer == "adam":
+            self.optimizer = torch.optim.Adam(self.parameters(), lr=learning_rate)
+        else:
+            raise ValueError(f"Unknown optimizer: {optimizer}")
+
+        self.training_error, self.testing_error = self.fit()
+
+    def _scale_x(self, x):
+        return self.low_fidelity_nn.x_scale.transform(x) if self.scale_input else x
+
+    @property
+    def alpha(self):
+        return torch.sigmoid(self.alpha_raw)
+
+    # Takes scaled tensors and stays differentiable, so the HF error also
+    # trains the LF network through the y_lf input
+    def forward(self, x):
+        x_mf = torch.cat((x, self.low_fidelity_nn(x)), dim=1)
+        y_linear = self.high_fidelity_nn._linear_layers(x_mf)
+        y_nl = self.high_fidelity_nn._nl_layers(x_mf)
+        return self.alpha * y_linear + (1 - self.alpha) * y_nl
+
+    def evaluate(self, x_in):
+        x_tensor = torch.as_tensor(
+            self._scale_x(x_in), dtype=torch.float32, device=self.device
+        )
+        with torch.no_grad():
+            y_hat = self.forward(x_tensor)
+        y_hat = y_hat.detach().cpu().numpy()
+
+        if self.scale_output:
+            y_hat = self.high_fidelity_nn.y_scale.inverse(y_hat)
+        return y_hat
+
+    def l2_penalty(self):
+        weights = [
+            param
+            for layers in (
+                self.low_fidelity_nn._layers,
+                self.high_fidelity_nn._nl_layers,
+            )
+            for name, param in layers.named_parameters()
+            if name.endswith("weight")
+        ]
+        return sum(w.pow(2).sum() for w in weights) + self.alpha.pow(2)
+
+    def joint_loss(self):
+        lf_nn, hf_nn = self.low_fidelity_nn, self.high_fidelity_nn
+        mse_lf = self.loss(lf_nn(lf_nn.X_train), lf_nn.y_train)
+        mse_hf = self.loss(self.forward(hf_nn.X_train[:, :-1]), hf_nn.y_train)
+        return mse_lf + mse_hf + self.l2_rate * self.l2_penalty()
+
+    def training_accuracy(self):
+        hf_nn = self.high_fidelity_nn
+        with torch.no_grad():
+            error = self.loss(self.forward(hf_nn.X_train[:, :-1]), hf_nn.y_train)
+        return np.sqrt(error.item())
+
+    def testing_accuracy(self):
+        hf_nn = self.high_fidelity_nn
+        with torch.no_grad():
+            error = self.loss(self.forward(hf_nn.X_test[:, :-1]), hf_nn.y_test)
+        return np.sqrt(error.item())
+
+    # Trains on the full data set each step, since L-BFGS needs a consistent loss
+    def fit(self, eval_interval=10):
+        lf_nn = self.low_fidelity_nn
+        train_error_history = []
+        test_error_history = []
+        lf_train_error_history = []
+        lf_test_error_history = []
+        for t in range(self.epochs):
+
+            def closure():
+                self.optimizer.zero_grad()
+                loss_t = self.joint_loss()
+                loss_t.backward()
+                return loss_t
+
+            self.optimizer.step(closure)
+
+            # Only evaluate periodically and forward-fill the skipped epochs,
+            # as in MLPNetwork and CompositeNN
+            if t % eval_interval == 0 or t == self.epochs - 1:
+                train_error = self.training_accuracy()
+                test_error = self.testing_accuracy()
+                lf_train_error = lf_nn.training_accuracy()
+                lf_test_error = lf_nn.testing_accuracy()
+            train_error_history.append(train_error)
+            test_error_history.append(test_error)
+            lf_train_error_history.append(lf_train_error)
+            lf_test_error_history.append(lf_test_error)
+
+        lf_nn.training_error = lf_train_error_history
+        lf_nn.testing_error = lf_test_error_history
+        return train_error_history, test_error_history
 
 
 # Function used for testing LowFidelity NN capabilities
