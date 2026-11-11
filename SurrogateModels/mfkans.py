@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import contextlib
 import functools
+import importlib
 import random
 
 import kan
@@ -79,6 +80,23 @@ def _global_rng_restored():
         random.setstate(py_state)
 
 
+# pykan's fit() always shows a tqdm progress bar, with no argument to turn it
+# off. It looks tqdm up as a global of its MultKAN module (the package's
+# kan.MultKAN name is the class), so swap in a disabled one while fitting.
+@contextlib.contextmanager
+def _progress_bar(show):
+    if show:
+        yield
+        return
+    multkan = importlib.import_module("kan.MultKAN")
+    tqdm = multkan.tqdm
+    multkan.tqdm = functools.partial(tqdm, disable=True)
+    try:
+        yield
+    finally:
+        multkan.tqdm = tqdm
+
+
 def _keeps_global_rng(init):
     @functools.wraps(init)
     def wrapper(*args, **kwargs):
@@ -110,6 +128,7 @@ class KANModel(kan.KAN, model.Model):
         bounds=None,
         lamb: float = 0.0,
         seed: int = 1,
+        verbose: bool = False,
     ):
         # grid is one size, or a list of sizes to refine through in order
         grids = [grid] if isinstance(grid, int) else list(grid)
@@ -123,6 +142,9 @@ class KANModel(kan.KAN, model.Model):
             k=spline_order,
             seed=seed,
             device=device,
+            # No checkpoints: nothing here uses them, and they print a line and
+            # write files under ./model on every fit
+            auto_save=False,
         )
         model.Model.__init__(
             self,
@@ -137,6 +159,7 @@ class KANModel(kan.KAN, model.Model):
 
         self.scale_input = scale_input
         self.scale_output = scale_output
+        self.verbose = verbose
 
         # self.x / self.y were scaled in place above (by Model.__init__) when
         # requested; apply that same fitted transform to the held-out test
@@ -216,8 +239,14 @@ class KANModel(kan.KAN, model.Model):
             self.cache_data = self.cache_data.to("cpu")
         refined = self.refine(new_grid)
         self.__dict__.update(refined.__dict__)
+        # refine() always turns checkpoints back on
+        self.auto_save = False
         self.to(target_device)
         return self
+
+    def fit(self, *args, **kwargs):
+        with _progress_bar(self.verbose):
+            return kan.KAN.fit(self, *args, **kwargs)
 
     def plot_fit_error(
         self,
@@ -310,6 +339,7 @@ class CompositeKANModel(kan.KAN, model.Model):
         bounds=None,
         seed: int = 1,
         lamb: float = 0.0,
+        verbose: bool = False,
     ):
         # grid is one size, or a list of sizes to refine through in order
         grids = [grid] if isinstance(grid, int) else list(grid)
@@ -322,6 +352,9 @@ class CompositeKANModel(kan.KAN, model.Model):
             k=spline_order,
             seed=seed,
             device=device,
+            # No checkpoints: nothing here uses them, and they print a line and
+            # write files under ./model on every fit
+            auto_save=False,
         )
         model.Model.__init__(
             self,
@@ -336,6 +369,7 @@ class CompositeKANModel(kan.KAN, model.Model):
 
         self.scale_input = scale_input
         self.scale_output = scale_output
+        self.verbose = verbose
 
         # self.x / self.y were scaled in place above when requested; apply the
         # same fitted transforms to the test data (see KANModel)
@@ -423,6 +457,8 @@ class CompositeKANModel(kan.KAN, model.Model):
             self.cache_data = self.cache_data.to("cpu")
         refined = self.refine(new_grid)
         self.__dict__.update(refined.__dict__)
+        # refine() always turns checkpoints back on
+        self.auto_save = False
         self._linear_nn = linear_nn
         self.to(target_device)
         return self
@@ -438,6 +474,10 @@ class CompositeKANModel(kan.KAN, model.Model):
         if self.scale_output:
             y_hat = self.y_scale.inverse(y_hat)
         return y_hat
+
+    def fit(self, *args, **kwargs):
+        with _progress_bar(self.verbose):
+            return kan.KAN.fit(self, *args, **kwargs)
 
     def plot_fit_error(
         self,
@@ -512,6 +552,7 @@ class MFKANModel(mf_model.MFModel):
         seed_lf: int = 1,
         seed_mf: int = 1,
         lf_model: model.Model = None,
+        verbose: bool = False,
     ):
         # The composite model has at least two inputs, and sampled bounds only
         # work for one (see DataTransform)
@@ -544,6 +585,7 @@ class MFKANModel(mf_model.MFModel):
                 bounds=bounds,
                 seed=seed_lf,
                 lamb=lamb_lf,
+                verbose=verbose,
             )
 
         # The range used to scale the y_lf column when the composite doesn't
@@ -579,6 +621,7 @@ class MFKANModel(mf_model.MFModel):
             bounds=mf_bounds,
             seed=seed_mf,
             lamb=lamb_mf,
+            verbose=verbose,
         )
 
     def _composite_input(self, x):

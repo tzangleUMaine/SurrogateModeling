@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import time
+
 import torch
 import matplotlib.pyplot as plt
 import torch.optim.optimizer
@@ -42,6 +44,7 @@ class MLPNetwork(torch.nn.Module, model.Model):
         y_scale_method="standard",
         bounds=None,
     ):
+        t0 = time.perf_counter()
         torch.nn.Module.__init__(self)
         model.Model.__init__(
             self, X, y, bounds, y_scale_method=y_scale_method, scale_output=scale_output
@@ -117,6 +120,7 @@ class MLPNetwork(torch.nn.Module, model.Model):
             self.load_state_dict(torch.load(weight_file))
         else:
             self.training_error, self.testing_error = self.fit()
+        self.training_time = time.perf_counter() - t0
 
         if write_weights:
             torch.save(self.state_dict(), weight_file)
@@ -536,6 +540,8 @@ class MultiFidelityNN(torch.nn.Module, mf_model.MFModel):
         if lf_model is None and lf_nn_dim is None:
             raise ValueError("MultiFidelityNN needs either lf_nn_dim or lf_model")
 
+        t0 = time.perf_counter()
+
         # Populate the multi-fidelity model data
         torch.nn.Module.__init__(self)
         mf_model.MFModel.__init__(self, X_lf, y_lf, X_hf, y_hf, bounds)
@@ -544,6 +550,9 @@ class MultiFidelityNN(torch.nn.Module, mf_model.MFModel):
         # called, which works in original units, so it needs no matching scaling
         if lf_model is not None:
             self.low_fidelity_nn = lf_model
+            # training_time includes the LF training either way, so add the
+            # given model's (a model that doesn't record one counts as 0)
+            t0 -= getattr(lf_model, "training_time", 0.0)
         else:
             # Generate a NN model of the lf model data
             self.low_fidelity_nn = MLPNetwork(
@@ -594,6 +603,7 @@ class MultiFidelityNN(torch.nn.Module, mf_model.MFModel):
             bounds=mf_bounds,
             solve_linear=solve_linear,
         )
+        self.training_time = time.perf_counter() - t0
 
     def evaluate(self, x):
         return self.forward(x)
